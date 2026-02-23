@@ -1,0 +1,25 @@
+# Audio capture (WASAPI loopback support)
+soundcard
+# Microphone capture (numpy-compatible)
+sounddevice
+
+# Voice Activity Detection (pre-compiled wheels for Windows)
+webrtcvad-wheels
+
+# Speech to Text
+faster-whisper
+
+# WebSocket server
+websockets>=12.0
+
+# Ollama HTTP client (async)
+httpx>=0.27.0
+
+# Config file
+pyyaml
+
+# Console UI
+rich
+
+# Numeric computation
+numpy

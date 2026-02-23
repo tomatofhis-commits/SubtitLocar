@@ -1,0 +1,345 @@
+/* settings.css - Settings Panel Dark UI */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+
+:root {
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --bg3: #22263a;
+    --border: #2e3248;
+    --accent: #6c8fff;
+    --accent2: #a78bfa;
+    --text: #e8eaf6;
+    --muted: #7b84a8;
+    --success: #4ade80;
+    --radius: 12px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+}
+
+/* ── Header ─── */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    background: rgba(15, 17, 23, .95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+}
+
+.header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+}
+
+.logo {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.subtitle-note {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.header-right {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s ease;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #8aaeff;
+    transform: translateY(-1px);
+}
+
+.btn-ghost {
+    background: var(--bg3);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+
+.btn-ghost:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+/* ── Main layout ─── */
+main {
+    max-width: 680px;
+    margin: 28px auto;
+    padding: 0 20px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ── Cards ─── */
+.card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent2);
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    margin-bottom: 2px;
+}
+
+/* ── Row ─── */
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.row>label:first-child {
+    font-size: 13.5px;
+    color: var(--text);
+    min-width: 160px;
+    flex-shrink: 0;
+}
+
+.row>label:first-child small {
+    color: var(--muted);
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+/* ── Toggle switch ─── */
+.toggle {
+    position: relative;
+    display: inline-block;
+    width: 46px;
+    height: 24px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.knob {
+    position: absolute;
+    inset: 0;
+    background: var(--bg3);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    transition: background .2s;
+}
+
+.knob::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    background: var(--muted);
+    border-radius: 50%;
+    transition: left .2s, background .2s;
+}
+
+.toggle input:checked+.knob {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.toggle input:checked+.knob::after {
+    left: 25px;
+    background: #fff;
+}
+
+/* ── Radio group ─── */
+.radio-group {
+    display: flex;
+    gap: 16px;
+}
+
+.radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 13px;
+}
+
+.radio-group input[type=radio] {
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+}
+
+/* ── Range slider ─── */
+.range-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 180px;
+}
+
+input[type=range] {
+    flex: 1;
+    height: 4px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    background: var(--bg3);
+    border-radius: 2px;
+    outline: none;
+    border: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+    transition: transform .1s;
+}
+
+input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.range-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 54px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Select ─── */
+select {
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+    flex: 1;
+    max-width: 280px;
+}
+
+select:focus {
+    border-color: var(--accent);
+}
+
+/* ── Color picker ─── */
+.color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+input[type=color] {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    padding: 2px;
+    background: var(--bg3);
+}
+
+.color-hex {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    font-family: monospace;
+}
+
+/* ── Text input ─── */
+.text-input {
+    flex: 1;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+    font-family: monospace;
+}
+
+.text-input:focus {
+    border-color: var(--accent);
+}
+
+/* ── Preview box ─── */
+.preview-card {
+    background: #111827;
+    border-color: #374151;
+}
+
+#preview-box {
+    background: linear-gradient(135deg, #1e1b4b 0%, #111827 100%);
+    border-radius: 10px;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.preview-line {
+    font-weight: 700;
+    line-height: 1.25;
+    word-break: break-all;
+    transition: all .2s ease;
+}

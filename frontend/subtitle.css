@@ -1,0 +1,130 @@
+/* subtitle.css - CSS Variable-driven subtitle display */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@700;900&family=Noto+Serif+JP:wght@700&family=M+PLUS+1p:wght@700;800&family=Kosugi+Maru&display=swap');
+
+:root {
+  --orig-font: 'Noto Sans JP', sans-serif;
+  --trans-font: 'Noto Sans JP', sans-serif;
+  --orig-size: 36px;
+  --trans-size: 46px;
+  --orig-color: #ffe066;
+  --trans-color: #ffffff;
+  --text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 4px 12px rgba(0, 0, 0, .7);
+  --text-align: left;
+  --show-orig: block;
+  --show-trans: block;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+}
+
+#subtitle-container {
+  position: fixed;
+  bottom: 80px;
+  left: 40px;
+  right: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.subtitle-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.subtitle-block.visible {
+  opacity: 1;
+}
+
+.subtitle-block.fading-out {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+/* Variables-driven styles - change CSS var and ALL elements update instantly */
+.subtitle-original {
+  display: var(--show-orig);
+  font-family: var(--orig-font);
+  font-size: var(--orig-size);
+  font-weight: 700;
+  color: var(--orig-color);
+  text-shadow: var(--text-shadow);
+  text-align: var(--text-align);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+
+.subtitle-translated {
+  display: var(--show-trans);
+  font-family: var(--trans-font);
+  font-size: var(--trans-size);
+  font-weight: 700;
+  color: var(--trans-color);
+  text-shadow: var(--text-shadow);
+  text-align: var(--text-align);
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  word-break: break-all;
+}
+
+.char {
+  display: inline-block;
+  opacity: 0;
+  transition: opacity 0.08s ease, transform 0.08s ease;
+  transform: translateY(4px);
+}
+
+.char.shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#connection-status {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  opacity: 0.85;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+#connection-status.connected {
+  background: rgba(0, 200, 100, .3);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, .4);
+}
+
+#connection-status.disconnected {
+  background: rgba(255, 60, 60, .3);
+  color: #ff6060;
+  border: 1px solid rgba(255, 96, 96, .4);
+}
+
+#connection-status.connecting {
+  background: rgba(255, 200, 0, .3);
+  color: #ffcc00;
+  border: 1px solid rgba(255, 200, 0, .4);
+}

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SubtitLocar 設定パネル</title>
+    <link rel="stylesheet" href="settings.css">
+    <style>
+        .ws-status {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            margin-left: 8px;
+        }
+
+        .ws-status.connected {
+            background: rgba(74, 222, 128, .15);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, .3);
+        }
+
+        .ws-status.disconnected {
+            background: rgba(239, 68, 68, .15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, .3);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="header-left">
+            <span class="logo">⚙ 字幕設定パネル</span>
+            <span class="subtitle-note">subtitle.html にリアルタイム反映</span>
+            <span id="ws-status" class="ws-status disconnected">● 切断中</span>
+        </div>
+        <div class="header-right">
+            <button id="btn-reset" class="btn btn-ghost">リセット</button>
+            <button id="btn-preview" class="btn btn-primary">テスト送信</button>
+        </div>
+    </header>
+
+    <main>
+
+        <!-- ── 表示設定 ─────────────────────────── -->
+        <section class="card">
+            <h2 class="card-title">表示設定</h2>
+            <div class="row">
+                <label>日本語（原文）を表示</label>
+                <label class="toggle"><input type="checkbox" id="showOriginal"><span class="knob"></span></label>
+            </div>
+            <div class="row">
+                <label>英語（翻訳）を表示</label>
+                <label class="toggle"><input type="checkbox" id="showTranslated"><span class="knob"></span></label>
+            </div>
+            <div class="row">
+                <label>接続状態インジケーター</label>
+                <label class="toggle"><input type="checkbox" id="showStatus"><span class="knob"></span></label>
+            </div>
+            <div class="row">
+                <label>テキスト配置</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="textAlign" value="left"> 左寄せ</label>
+                    <label><input type="radio" name="textAlign" value="center"> 中央</label>
+                    <label><input type="radio" name="textAlign" value="right"> 右寄せ</label>
+                </div>
+            </div>
+            <div class="row">
+                <label>最大表示ブロック数</label>
+                <div class="range-group">
+                    <input type="range" id="maxBlocks" min="1" max="6" step="1">
+                    <span class="range-val" id="maxBlocks-val">3</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>1行の最大文字数 <small>0=無制限</small></label>
+                <div class="range-group">
+                    <input type="range" id="maxCharsPerLine" min="0" max="80" step="5">
+                    <span class="range-val" id="maxCharsPerLine-val">40</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>自動非表示まで <small>秒 / 0=無効</small></label>
+                <div class="range-group">
+                    <input type="range" id="displayDuration" min="0" max="30000" step="500">
+                    <span class="range-val" id="displayDuration-val">8.0 秒</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── フォント設定 ─────────────────────── -->
+        <section class="card">
+            <h2 class="card-title">フォント</h2>
+            <div class="row">
+                <label>フォントファミリー</label>
+                <select id="fontFamily">
+                    <option value="Noto Sans JP">Noto Sans JP（推奨）</option>
+                    <option value="Noto Serif JP">Noto Serif JP</option>
+                    <option value="M PLUS 1p">M PLUS 1p</option>
+                    <option value="Kosugi Maru">Kosugi Maru</option>
+                    <option value="Inter">Inter（英語向け）</option>
+                </select>
+            </div>
+            <div class="row">
+                <label>日本語 文字サイズ</label>
+                <div class="range-group">
+                    <input type="range" id="fontSizeOrig" min="12" max="120" step="2">
+                    <span class="range-val" id="fontSizeOrig-val">36 px</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>英語 文字サイズ</label>
+                <div class="range-group">
+                    <input type="range" id="fontSizeTrans" min="12" max="120" step="2">
+                    <span class="range-val" id="fontSizeTrans-val">46 px</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── 色設定 ────────────────────────────── -->
+        <section class="card">
+            <h2 class="card-title">色・縁取り</h2>
+            <div class="row">
+                <label>日本語テキスト色</label>
+                <div class="color-row">
+                    <input type="color" id="colorOrig">
+                    <span class="color-hex" id="colorOrig-hex">#ffe066</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>英語テキスト色</label>
+                <div class="color-row">
+                    <input type="color" id="colorTrans">
+                    <span class="color-hex" id="colorTrans-hex">#ffffff</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>縁取り色</label>
+                <div class="color-row">
+                    <input type="color" id="outlineColor">
+                    <span class="color-hex" id="outlineColor-hex">#000000</span>
+                </div>
+            </div>
+            <div class="row">
+                <label>縁取り太さ <small>0=なし</small></label>
+                <div class="range-group">
+                    <input type="range" id="outlineWidth" min="0" max="8" step="1">
+                    <span class="range-val" id="outlineWidth-val">2 px</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── タイプライター設定 ─────────────────── -->
+        <section class="card">
+            <h2 class="card-title">タイプライター</h2>
+            <div class="row">
+                <label>タイプライターエフェクト</label>
+                <label class="toggle"><input type="checkbox" id="typewriterOn"><span class="knob"></span></label>
+            </div>
+            <div class="row">
+                <label>文字表示速度 <small>ms/文字（小さいほど速い）</small></label>
+                <div class="range-group">
+                    <input type="range" id="typewriterSpeed" min="5" max="200" step="5">
+                    <span class="range-val" id="typewriterSpeed-val">35 ms</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── 接続設定 ─────────────────────────── -->
+        <section class="card">
+            <h2 class="card-title">接続</h2>
+            <div class="row">
+                <label>WebSocket URL</label>
+                <input type="text" id="wsUrl" class="text-input" placeholder="ws://localhost:8765">
+            </div>
+        </section>
+
+        <!-- ── プレビュー ─────────────────────────── -->
+        <section class="card preview-card">
+            <h2 class="card-title">プレビュー</h2>
+            <div id="preview-box">
+                <div id="preview-original" class="preview-line">今日は雀魂で対戦します！</div>
+                <div id="preview-translated" class="preview-line">Today I'll be playing Mahjong Soul!</div>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="settings.js"></script>
+</body>
+
+</html>

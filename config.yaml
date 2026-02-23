@@ -1,0 +1,29 @@
+# SubtitLocar - Configuration File
+# Edit this file to customize the system behavior.
+
+audio:
+  # Microphone device name (partial match). null = system default.
+  microphone_name: null
+  sample_rate: 16000
+  vad_aggressiveness: 1
+  silence_duration_sec: 0.8
+
+stt:
+  # Whisper model: tiny/base/small/medium/large-v2/large-v3
+  model: "small"
+  device: "cuda"
+  # Nuitka環境下での CUBLAS_STATUS_NOT_SUPPORTED 回避のため、最も安全な auto (自動フォールバック) を使用
+  compute_type: "auto"
+  language: "ja"
+  device_index: 0
+
+translation:
+  ollama_url: "http://localhost:11434"
+  model: "gemma3:4b"
+  source_lang: "Japanese"
+  target_lang: "English"
+  timeout_sec: 15
+
+websocket:
+  host: "localhost"
+  port: 8765
