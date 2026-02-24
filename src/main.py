@@ -223,26 +223,35 @@ async def main() -> None:
         try:
             sj = json.loads(settings_json.read_text("utf-8"))
             audio_cfg = config.setdefault("audio", {})
-            mic_device = sj.get("audioMicDevice")
-            if mic_device and mic_device != "(デフォルト)":
-                audio_cfg["microphone_name"] = mic_device
-                console.print(f"[cyan]音声デバイス: {mic_device}[/cyan]")
-                
+            stt_cfg = config.setdefault("stt", {})
             trans_cfg = config.setdefault("translation", {})
-            ai_model = sj.get("aiModel")
-            if ai_model:
-                trans_cfg["model"] = ai_model
-                console.print(f"[cyan]AIモデル: {ai_model}[/cyan]")
-                
-            # Language Parsing
+
+            # 項目ごとに個別に try-except して一部分の失敗が全体に波及しないようにする
+            def safe_load(key, target_dict, target_key, transform=None):
+                val = sj.get(key)
+                if val is not None:
+                    try:
+                        target_dict[target_key] = transform(val) if transform else val
+                        return True
+                    except Exception:
+                        pass
+                return False
+
+            if safe_load("audioMicDevice", audio_cfg, "microphone_name"):
+                if audio_cfg["microphone_name"] == "(デフォルト)":
+                    audio_cfg["microphone_name"] = None
+                else:
+                    console.print(f"[cyan]音声デバイス: {audio_cfg['microphone_name']}[/cyan]")
+
+            if safe_load("aiModel", trans_cfg, "model"):
+                console.print(f"[cyan]AIモデル: {trans_cfg['model']}[/cyan]")
+
             stt_lang = sj.get("sttLanguage")
             if stt_lang:
-                stt_cfg = config.setdefault("stt", {})
                 if "自動判定" in stt_lang or "Auto" in stt_lang:
                     stt_cfg["language"] = None
                     console.print("[cyan]音声認識言語: Auto[/cyan]")
                 else:
-                    # e.g. "Japanese" -> "ja", "English" -> "en"
                     lang_map = {
                         "Japanese": "ja", "English": "en", "Chinese": "zh", 
                         "Korean": "ko", "Spanish": "es", "French": "fr", 
@@ -253,29 +262,24 @@ async def main() -> None:
                         stt_cfg["language"] = mapped
                         console.print(f"[cyan]音声認識言語: {stt_lang} ({mapped})[/cyan]")
 
-            src_lang = sj.get("transSourceLang")
-            tgt_lang = sj.get("transTargetLang")
-            if src_lang:
-                trans_cfg["source_lang"] = src_lang
-                console.print(f"[cyan]翻訳元: {src_lang}[/cyan]")
-            if tgt_lang:
-                trans_cfg["target_lang"] = tgt_lang
-                console.print(f"[cyan]翻訳先: {tgt_lang}[/cyan]")
-                
-            # Microphone Sensitivity
-            mic_sens = sj.get("micSensitivity")
-            if mic_sens is not None:
-                audio_cfg["sensitivity"] = float(mic_sens)
-                console.print(f"[cyan]マイク感度: {mic_sens}倍[/cyan]")
-                
-            # VAD Threshold
-            vad_thresh = sj.get("vadThreshold")
-            if vad_thresh is not None:
-                stt_cfg["vad_threshold"] = float(vad_thresh)
-                console.print(f"[cyan]無音判定レベル: {vad_thresh}[/cyan]")
-                
+            safe_load("transSourceLang", trans_cfg, "source_lang")
+            safe_load("transTargetLang", trans_cfg, "target_lang")
+            if "source_lang" in trans_cfg: console.print(f"[cyan]翻訳元: {trans_cfg['source_lang']}[/cyan]")
+            if "target_lang" in trans_cfg: console.print(f"[cyan]翻訳先: {trans_cfg['target_lang']}[/cyan]")
+
+            if safe_load("micSensitivity", audio_cfg, "sensitivity", float):
+                console.print(f"[cyan]マイク感度: {audio_cfg['sensitivity']}倍[/cyan]")
+
+            if safe_load("vadThreshold", stt_cfg, "vad_threshold", float):
+                console.print(f"[cyan]無音判定レベル: {stt_cfg['vad_threshold']}[/cyan]")
+
+            if safe_load("beamSize", stt_cfg, "beam_size", int):
+                console.print(f"[cyan]Beam Size (探索深度): {stt_cfg['beam_size']}[/cyan]")
+
         except Exception as e:
-            console.print(f"[yellow]settings.json の読み込み失敗: {e}[/yellow]")
+            console.print(f"[yellow]settings.json の解析失敗: {e}[/yellow]")
+    else:
+        console.print("[dim]settings.json が存在しません。デフォルト設定を使用します。[/dim]")
 
     print_banner(config)
 

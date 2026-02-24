@@ -20,6 +20,8 @@ stt:
   device_index: 0
   # Faster-Whisper VAD threshold (0.01 - 0.99, higher = strict silence detection)
   vad_threshold: 0.15
+  # Beam size for transcription (higher = more accurate but slower, default: 5)
+  beam_size: 5
 
 translation:
   ollama_url: "http://localhost:11434"

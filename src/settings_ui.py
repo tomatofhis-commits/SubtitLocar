@@ -84,12 +84,13 @@ DEFAULTS = {
     "transTargetLang":   _trans_cfg.get("target_lang", "English"),
     "micSensitivity":    1.0,
     "vadThreshold":      0.15,
+    "beamSize":          5,
 }
 
 LOCAL_KEYS = {
     "audioMicDevice", "aiModel", 
     "sttLanguage", "transSourceLang", "transTargetLang",
-    "micSensitivity", "vadThreshold"
+    "micSensitivity", "vadThreshold", "beamSize"
 }   # excluded from WS broadcast
 
 
@@ -166,6 +167,9 @@ class SettingsWindow:
 
         self._build_ui()
         self._load_to_ui()
+        
+        # Closing hook
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         
         self.root.after(100, self._poll_status_queue)
 
@@ -290,6 +294,8 @@ class SettingsWindow:
         self._audio_device_combobox()
         self._create_scale("micSensitivity", "マイク感度 (音量倍率):", 0.1, 5.0, 0.1)
         self._create_scale("vadThreshold", "無音判定レベル (ノイズ除去):", 0.01, 0.99, 0.01)
+        self._scale("beamSize", "文字起こしの精度 (Beam Size):", 1, 10, 1, 
+                    fmt=lambda v: f"{int(v)}")
         self._ai_model_combobox()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
         self._language_combobox("transSourceLang", "翻訳元の言語")
@@ -457,10 +463,11 @@ class SettingsWindow:
         var = tk.DoubleVar()
         self._vars[key] = var
         row = self._row(label)
-        s = tk.Scale(row, variable=var, from_=from_, to=to, resolution=resolution,
-                     orient="horizontal", bg=BG, fg=FG, highlightthickness=0, length=200)
-        s.pack(side="left")
-        s.bind("<ButtonRelease-1>", lambda _: self._on_change())
+        sc = tk.Scale(row, variable=var, from_=from_, to=to, resolution=resolution,
+                      orient="horizontal", bg=BG, fg=FG, troughcolor=BG2,
+                      highlightthickness=0, showvalue=True, length=200,
+                      command=lambda _: self._on_change())
+        sc.pack(side="left")
 
     # ── State management ──────────────────────────────────────────────
 
@@ -478,7 +485,7 @@ class SettingsWindow:
 
     def _read_from_ui(self) -> dict:
         INT_KEYS = {"maxBlocks", "fontSizeOrig", "fontSizeTrans",
-                    "outlineWidth", "typewriterSpeed", "maxCharsPerLine", "displayDuration"}
+                    "outlineWidth", "typewriterSpeed", "maxCharsPerLine", "displayDuration", "beamSize"}
         result = {}
         for key, var in self._vars.items():
             val = var.get()
@@ -530,10 +537,19 @@ class SettingsWindow:
         self._on_change()
 
     def _shutdown(self):
-        """Send SIGINT to gracefully terminate the application."""
+        """Save and send SIGINT to gracefully terminate the application."""
+        logger.info("Saving settings and shutting down...")
+        self.settings = self._read_from_ui()
+        save_settings(self.settings)
         self.root.destroy()
         import os, signal
         os.kill(os.getpid(), signal.SIGINT)
+
+    def _on_close(self):
+        """Handle window 'X' button click."""
+        self.settings = self._read_from_ui()
+        save_settings(self.settings)
+        self.root.destroy()
 
     def _restart_app(self):
         """Restart the entire application."""
