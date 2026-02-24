@@ -14,10 +14,11 @@
 
 ## セットアップ手順
 
-### 1. Python依存関係のインストール
+### 1. Python環境でのセットアップ（ソースコードから実行する場合）
 
 ```powershell
-cd d:\Locally_Translated_Subtitle_Project
+# プロジェクトフォルダに移動
+cd <SubtitLocarのディレクトリ>
 pip install -r requirements.txt
 ```
 
@@ -44,10 +45,11 @@ ollama pull qwen2.5:14b
 # Ollamaを先に起動 (別ターミナルで)
 ollama serve
 
-# 字幕システムを起動
-cd d:\Locally_Translated_Subtitle_Project
+# 字幕システムを起動 (ソースコードから実行する場合)
+cd <SubtitLocarのディレクトリ>
 python src/main.py
 ```
+*(※ インストーラー版の場合はスタートメニュー等から直接GUIアプリを起動してください)*
 
 起動時に利用可能なオーディオデバイスの一覧が表示されます。
 `config.yaml` の `microphone_name` や `loopback_device_name` に合わせてください。
@@ -61,7 +63,7 @@ python src/main.py
 | 項目 | 設定値 |
 |---|---|
 | ローカルファイル | ✅ チェックを入れる |
-| ファイルパス | `d:\Locally_Translated_Subtitle_Project\frontend\subtitle.html` |
+| ファイルパス | `<SubtitLocarのディレクトリ>\frontend\subtitle.html` |
 | 幅 | `1920` |
 | 高さ | `1080` |
 | カスタムCSS | (空欄) |

@@ -18,6 +18,8 @@ build/
 dist_folder/
 main.build/
 main.dist/
+installer/
+*.exe
 
 # Configuration/Secrets (If you want to keep them local)
 # config.yaml

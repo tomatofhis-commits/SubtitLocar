@@ -64,6 +64,8 @@ class AudioCapture:
         self.sample_rate: int = audio_cfg.get("sample_rate", 16000)
         self.vad_aggressiveness: int = audio_cfg.get("vad_aggressiveness", 2)
         self.silence_duration_sec: float = audio_cfg.get("silence_duration_sec", 0.8)
+        self.sensitivity: float = audio_cfg.get("sensitivity", 1.0)
+        
         self.audio_queue = audio_queue
         self.status_queue = status_queue
         self.loop = loop
@@ -184,21 +186,7 @@ class AudioCapture:
         """Thread-safely push a speech segment to the asyncio queue."""
         duration = len(segment) / self.sample_rate
         
-        # デバッグ: 毎回キャプチャした生の音声をWAVとして上書き保存し、データが壊れていないか確認する
-        try:
-            import wave
-            import os
-            debug_path = os.path.join(os.getcwd(), "debug_mic_capture.wav")
-            pcm16 = _float32_to_pcm16_bytes(segment)
-            with wave.open(debug_path, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2) # 16-bit
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(pcm16)
-            max_amp = np.max(np.abs(segment))
-            logger.info(f"Speech segment queued: {duration:.2f}s (Max Amp: {max_amp:.4f}) -> Saved debug WAV {debug_path}")
-        except Exception as e:
-            logger.info(f"Speech segment queued: {duration:.2f}s (Failed to save WAV: {e})")
+        logger.info(f"Speech segment queued: {duration:.2f}s (Max Amp: {np.max(np.abs(segment)):.4f})")
 
         asyncio.run_coroutine_threadsafe(
             self.audio_queue.put(segment),

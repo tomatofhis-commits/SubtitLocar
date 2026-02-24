@@ -81,6 +81,8 @@ class STTEngine:
         self.language: Optional[str] = stt_cfg.get("language", "ja") or None
         self.device_index: int = stt_cfg.get("device_index", 0)
 
+        self.vad_threshold: float = stt_cfg.get("vad_threshold", 0.15)
+
         self.audio_queue = audio_queue
         self.text_queue = text_queue
         self.model: Optional[WhisperModel] = None
@@ -130,7 +132,7 @@ class STTEngine:
             language=self.language,
             beam_size=5,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500, threshold=0.15), # 小さな声でも拾いつつ、純粋なノイズ（非音声）は弾く
+            vad_parameters=dict(min_silence_duration_ms=500, threshold=self.vad_threshold), # 小さな声でも拾いつつ、純粋なノイズ（非音声）は弾く
             condition_on_previous_text=False, # ハルシネーション（繰り返しや定型文）の抑制
         )
 
@@ -138,3 +140,4 @@ class STTEngine:
         result = " ".join(t for t in texts if t)
         
         return result
+

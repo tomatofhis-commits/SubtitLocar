@@ -16,13 +16,15 @@
   "colorOrigSecreAI": "#00ffff",
   "colorTransSecreAI": "#ff8080",
   "outlineColor": "#000000",
-  "outlineWidth": 2,
+  "outlineWidth": 1,
   "typewriterOn": true,
   "typewriterSpeed": 5,
   "audioMicDevice": "マイク (3- UAB-80)",
+  "micSensitivity": 0.8,
+  "vadThreshold": 0.28,
   "aiModel": "gemma3:4b",
-  "sttLanguage": "English",
-  "transSourceLang": "English",
+  "sttLanguage": "Japanese",
+  "transSourceLang": "Japanese",
   "transTargetLang": "English",
   "reconnectInterval": 3000
 }

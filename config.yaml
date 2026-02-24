@@ -7,6 +7,8 @@ audio:
   sample_rate: 16000
   vad_aggressiveness: 1
   silence_duration_sec: 0.8
+  # Microphone sensitivity multiplier (e.g. 1.0 = normal, 2.0 = double volume)
+  sensitivity: 1.0
 
 stt:
   # Whisper model: tiny/base/small/medium/large-v2/large-v3
@@ -16,6 +18,8 @@ stt:
   compute_type: "auto"
   language: "ja"
   device_index: 0
+  # Faster-Whisper VAD threshold (0.01 - 0.99, higher = strict silence detection)
+  vad_threshold: 0.15
 
 translation:
   ollama_url: "http://localhost:11434"

@@ -262,6 +262,18 @@ async def main() -> None:
                 trans_cfg["target_lang"] = tgt_lang
                 console.print(f"[cyan]翻訳先: {tgt_lang}[/cyan]")
                 
+            # Microphone Sensitivity
+            mic_sens = sj.get("micSensitivity")
+            if mic_sens is not None:
+                audio_cfg["sensitivity"] = float(mic_sens)
+                console.print(f"[cyan]マイク感度: {mic_sens}倍[/cyan]")
+                
+            # VAD Threshold
+            vad_thresh = sj.get("vadThreshold")
+            if vad_thresh is not None:
+                stt_cfg["vad_threshold"] = float(vad_thresh)
+                console.print(f"[cyan]無音判定レベル: {vad_thresh}[/cyan]")
+                
         except Exception as e:
             console.print(f"[yellow]settings.json の読み込み失敗: {e}[/yellow]")
 

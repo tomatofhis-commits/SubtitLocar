@@ -15,7 +15,10 @@ from typing import Optional
 import os
 import signal
 import sys
+import logging
 import sounddevice as sd
+
+logger = logging.getLogger(__name__)
 
 def get_base_path() -> Path:
     if "__compiled__" in globals() or getattr(sys, 'frozen', False):
@@ -74,17 +77,19 @@ DEFAULTS = {
     "typewriterSpeed":   35,
     # Connection
     "reconnectInterval": 3000,
-    # Local System (not sent to subtitle.html, used at main.py startup)
     "audioMicDevice":    "(デフォルト)",
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
     "transSourceLang":   _trans_cfg.get("source_lang", "Japanese"),
     "transTargetLang":   _trans_cfg.get("target_lang", "English"),
+    "micSensitivity":    1.0,
+    "vadThreshold":      0.15,
 }
 
 LOCAL_KEYS = {
     "audioMicDevice", "aiModel", 
-    "sttLanguage", "transSourceLang", "transTargetLang"
+    "sttLanguage", "transSourceLang", "transTargetLang",
+    "micSensitivity", "vadThreshold"
 }   # excluded from WS broadcast
 
 
@@ -230,6 +235,20 @@ class SettingsWindow:
         canvas.bind_all("<MouseWheel>",
                         lambda e: canvas.yview_scroll(int(-1*(e.delta//120)), "units"))
 
+        # --- Bottom Buttons ---
+        bottom_frame = tk.Frame(self.root, bg=BG)
+        bottom_frame.pack(side="bottom", fill="x", pady=20)
+        
+        btn_restart = tk.Button(bottom_frame, text="🔁 システム再起動", bg="#f59e0b", fg=FG, borderwidth=0,
+                                activebackground="#d97706", activeforeground=FG, font=("Meiryo", 10, "bold"),
+                                cursor="hand2", padx=20, pady=8, command=self._restart_app)
+        btn_restart.pack(side="left", padx=20)
+        
+        btn_shutdown = tk.Button(bottom_frame, text="❌ システム終了", bg="#ef4444", fg=FG, borderwidth=0,
+                                 activebackground="#dc2626", activeforeground=FG, font=("Meiryo", 11, "bold"),
+                                 cursor="hand2", padx=20, pady=8, command=self._shutdown)
+        btn_shutdown.pack(side="right", padx=20)
+
         # ── Sections ──────────────────────────────────────────────────
 
         self._section("表示設定")
@@ -269,6 +288,8 @@ class SettingsWindow:
 
         self._section("システム設定 ★再起動後に有効")
         self._audio_device_combobox()
+        self._create_scale("micSensitivity", "マイク感度 (音量倍率):", 0.1, 5.0, 0.1)
+        self._create_scale("vadThreshold", "無音判定レベル (ノイズ除去):", 0.01, 0.99, 0.01)
         self._ai_model_combobox()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
         self._language_combobox("transSourceLang", "翻訳元の言語")
@@ -281,9 +302,6 @@ class SettingsWindow:
         self._mk_btn(btn_f, "字幕クリア",  self._send_clear, ACCENT2,"white" ).pack(side="left", padx=(8, 0))
         self._mk_btn(btn_f, "リセット",    self._reset,      BG2,    MUTED   ).pack(side="left", padx=(8, 0))
         
-        # Shutdown button
-        self._mk_btn(btn_f, "システム終了", self._shutdown,   RED,    "white" ).pack(side="right")
-
     # ── Widget factories ──────────────────────────────────────────────
 
     def _mk_btn(self, parent, text, cmd, bg, fg):
@@ -435,6 +453,15 @@ class SettingsWindow:
         self._mk_btn(row, "変更", _pick, BG2, MUTED).pack(side="left")
         var.trace_add("write", _update)
 
+    def _create_scale(self, key, label, from_, to, resolution=0.1):
+        var = tk.DoubleVar()
+        self._vars[key] = var
+        row = self._row(label)
+        s = tk.Scale(row, variable=var, from_=from_, to=to, resolution=resolution,
+                     orient="horizontal", bg=BG, fg=FG, highlightthickness=0, length=200)
+        s.pack(side="left")
+        s.bind("<ButtonRelease-1>", lambda _: self._on_change())
+
     # ── State management ──────────────────────────────────────────────
 
     def _load_to_ui(self):
@@ -505,6 +532,22 @@ class SettingsWindow:
     def _shutdown(self):
         """Send SIGINT to gracefully terminate the application."""
         self.root.destroy()
+        import os, signal
+        os.kill(os.getpid(), signal.SIGINT)
+
+    def _restart_app(self):
+        """Restart the entire application."""
+        logger.info("Saving settings and restarting application...")
+        self.settings = self._read_from_ui()
+        save_settings(self.settings)
+        self.root.destroy()
+        import subprocess
+        executable = sys.executable
+        if getattr(sys, 'frozen', False) or getattr(sys, 'compiled', False):
+            subprocess.Popen([executable] + sys.argv[1:])
+        else:
+            subprocess.Popen([executable] + sys.argv)
+        import os, signal
         os.kill(os.getpid(), signal.SIGINT)
 
     def _flash_status(self, msg: str):
