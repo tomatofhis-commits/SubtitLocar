@@ -77,7 +77,7 @@ class STTEngine:
         stt_cfg = config.get("stt", {})
         self.model_size: str = stt_cfg.get("model", "large-v3")
         self.device: str = stt_cfg.get("device", "cuda")
-        self.compute_type: str = stt_cfg.get("compute_type", "float16")
+        self.compute_type: str = stt_cfg.get("compute_type", "auto")
         self.language: Optional[str] = stt_cfg.get("language", "ja") or None
         self.device_index: int = stt_cfg.get("device_index", 0)
 
@@ -121,6 +121,16 @@ class STTEngine:
                     await self.text_queue.put({"text": text, "source": "mic"})
             except Exception as e:
                 logger.error(f"STT処理エラー: {e}")
+                if "cuBLAS" in str(e) or "CUDA" in str(e):
+                    logger.warning("GPUエラーを検出しました。CPUモードへの切り替えを試みます...")
+                    try:
+                        # モデルをCPUでリロード
+                        self.device = "cpu"
+                        self.compute_type = "int8"
+                        self.load_model()
+                        logger.info("CPUモードへ切り替え完了。処理を続行します。")
+                    except Exception as re:
+                        logger.error(f"モデルの再ロードに失敗しました: {re}")
             finally:
                 self.audio_queue.task_done()
 
@@ -128,17 +138,49 @@ class STTEngine:
         """
         numpy配列をWhisperで文字起こしする（同期処理・run_in_executorで呼ぶ）
         """
-        segments, info = self.model.transcribe(
-            audio,
-            language=self.language,
-            beam_size=self.beam_size,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500, threshold=self.vad_threshold), # 小さな声でも拾いつつ、純粋なノイズ（非音声）は弾く
-            condition_on_previous_text=False, # ハルシネーション（繰り返しや定型文）の抑制
-        )
+        try:
+            segments, info = self.model.transcribe(
+                audio,
+                language=self.language,
+                beam_size=self.beam_size,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500, threshold=self.vad_threshold),
+                condition_on_previous_text=False,
+            )
 
-        texts = [seg.text.strip() for seg in segments]
-        result = " ".join(t for t in texts if t)
-        
-        return result
+            texts = []
+            for seg in segments:
+                text = seg.text.strip()
+                if not text:
+                    continue
+
+                # ── ハルシネーション対策 ──
+                # no_speech_prob: Whisperが「これは音声ではない」と判断する確率 (0.0〜1.0)
+                #   → 高いほど「音声ではない（ノイズ）」と判断している
+                # avg_logprob: 認識結果の平均対数確率
+                #   → 低いほど「自信がない（曖昧な認識）」ことを意味する
+                no_speech = getattr(seg, "no_speech_prob", 0.0)
+                avg_logprob = getattr(seg, "avg_logprob", 0.0)
+
+                if no_speech > 0.6:
+                    logger.debug(
+                        f"[STT フィルタ] 無音確率が高いためスキップ "
+                        f"(no_speech_prob={no_speech:.2f}): {text[:30]}"
+                    )
+                    continue
+
+                if avg_logprob < -1.0:
+                    logger.debug(
+                        f"[STT フィルタ] 確信度が低いためスキップ "
+                        f"(avg_logprob={avg_logprob:.2f}): {text[:30]}"
+                    )
+                    continue
+
+                texts.append(text)
+
+            result = " ".join(texts)
+            return result
+        except Exception as e:
+            # ここで発生したエラーは呼び出し元の run() でキャッチされる
+            raise e
 

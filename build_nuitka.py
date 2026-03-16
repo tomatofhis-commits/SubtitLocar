@@ -35,18 +35,20 @@ for sp in site_pkgs:
         os.path.join("nvidia", "cublas", "bin"),
         os.path.join("nvidia", "cudnn", "bin"),
         os.path.join("nvidia", "nvrtc", "bin"),
-        os.path.join("nvidia", "cufft", "bin"),
         os.path.join("nvidia", "curand", "bin"),
-        os.path.join("nvidia", "cusparse", "bin"),
-        os.path.join("torch", "lib"),
+        os.path.join("torch", "lib"), # ここに cublas 等の必須ファイルが混ざっている場合がある
     ]:
         candidate_dir = os.path.join(sp, sub_path)
         if os.path.exists(candidate_dir) and candidate_dir not in dll_source_dirs:
             dll_source_dirs.append(candidate_dir)
-            print(f"Found CUDA DLL dir: {candidate_dir}")
+            print(f"Found CUDA/Torch DLL dir: {candidate_dir}")
+
+# さらに、CTranslate2 自体のディレクトリからも DLL を収集対象に加える
+if os.path.exists(ct2_dir) and ct2_dir not in dll_source_dirs:
+    dll_source_dirs.append(ct2_dir)
 
 if not dll_source_dirs:
-    print("Warning: Could not find 'torch/lib' or 'nvidia/*/bin' directory! STT Engine might fail to use CUDA/GPU.")
+    print("Warning: Could not find CUDA/Torch DLL directories! STT Engine might fail to use CUDA/GPU.")
 
 nuitka_cmd = [
     sys.executable, "-m", "nuitka",
@@ -69,6 +71,8 @@ nuitka_cmd = [
     "--nofollow-import-to=torch",
     # 諸悪の根源である av をNuitkaのコンパイル(C言語化)対象から完全に除外する
     "--nofollow-import-to=av",
+    # 除外したモジュールの使用をランタイムで許可するフラグ (Nuitkaのデプロイ制約回避)
+    "--no-deployment-flag=excluded-module-usage",
     # その代わり、実行時に必要な機能として av 等をそのままコピーしてExeに同封する
     f"--include-data-dir={av_dir}=av",
     f"--include-data-dir={ct2_dir}=ctranslate2",
@@ -78,6 +82,7 @@ nuitka_cmd = [
 
 nuitka_cmd.extend([
     "--output-dir=dist_folder",
+    "--output-filename=SubtitLocar",
     "src/main.py"
 ])
 
@@ -100,20 +105,57 @@ except subprocess.CalledProcessError:
 if dll_source_dirs:
     import shutil
     import glob
-    target_dist_dir = os.path.join("dist_folder", "main.dist")
+    # --output-filename を指定した場合、distフォルダ名もそれに引きずられる場合があるが、
+    # 通常は main.dist になるため、現物を確認するロジックにする
+    target_dist_dir = os.path.join("dist_folder", "SubtitLocar.dist")
+    if not os.path.exists(target_dist_dir):
+        target_dist_dir = os.path.join("dist_folder", "main.dist")
+
     print(f"\n====================================")
-    print(f"Copying CUDA & NVIDIA DLLs directly to Executable Directory...")
+    print(f"Copying Optimized (Whitelisted) DLLs directly to Executable Directory...")
+    
+    # 配布サイズ軽量化のためのホワイトリスト (faster-whisper/CTranslate2 実行に最低限必要なもの)
+    dll_whitelist = {
+        "cublas64_12.dll",
+        "cublasLt64_12.dll",
+        "cudart64_12.dll",
+        "cudnn64_9.dll",
+        "cudnn_adv64_9.dll",
+        "cudnn_ops64_9.dll",
+        "cudnn_cnn64_9.dll",
+        "cudnn_heuristic64_9.dll",
+        "nvrtc64_120_0.dll",
+        "nvJitLink_120_0.dll",
+        "zlibwapi.dll",
+        "ctranslate2.dll", # 本体
+        "libcrypto-3.dll",
+        "libssl-3.dll",
+    }
+
     copied_dlls = set()
     for s_dir in dll_source_dirs:
         for dll_file in glob.glob(os.path.join(s_dir, "*.dll")):
-            dll_name = os.path.basename(dll_file).lower()
-            if dll_name not in copied_dlls:
+            dll_name = os.path.basename(dll_file)
+            dll_name_lower = dll_name.lower()
+            
+            # ホワイトリストにあるか、または中核ライブラリっぽければコピー
+            # (名前の後ろにバージョン番号がつく場合があるので部分一致も考慮)
+            is_whitelisted = False
+            for w in dll_whitelist:
+                if dll_name_lower == w.lower():
+                    is_whitelisted = True
+                    break
+            
+            if is_whitelisted and dll_name_lower not in copied_dlls:
                 try:
                     shutil.copy(dll_file, target_dist_dir)
-                    print(f" [+] Copied (First-Match): {os.path.basename(dll_file)}")
-                    copied_dlls.add(dll_name)
+                    print(f" [軽量化] Copied: {dll_name}")
+                    copied_dlls.add(dll_name_lower)
                 except Exception as e:
-                    print(f" [-] Failed to copy {os.path.basename(dll_file)}: {e}")
-            else:
-                print(f" [~] Skipped (Already copied): {os.path.basename(dll_file)}")
+                    print(f" [-] Failed to copy {dll_name}: {e}")
+            elif is_whitelisted:
+                print(f" [~] Skipped (Already copied): {dll_name}")
+    
+    # ホワイトリスト外の巨大ファイルが紛れ込んでいないかチェック
+    print(f"Optimization complete. Selected {len(copied_dlls)} essential DLLs.")
     print(f"====================================\n")
