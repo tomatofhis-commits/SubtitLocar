@@ -17,6 +17,7 @@ import signal
 import sys
 import logging
 import sounddevice as sd
+import soundcard as sc
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,9 @@ DEFAULTS = {
     "typewriterSpeed":   35,
     # Connection
     "reconnectInterval": 3000,
+    "audioCaptureMode":  "microphone",  # microphone / loopback
     "audioMicDevice":    "(デフォルト)",
+    "audioLoopbackDevice": "(デフォルト)",
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
     "transSourceLang":   _trans_cfg.get("source_lang", "Japanese"),
@@ -88,7 +91,7 @@ DEFAULTS = {
 }
 
 LOCAL_KEYS = {
-    "audioMicDevice", "aiModel", 
+    "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
     "sttLanguage", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize"
 }   # excluded from WS broadcast
@@ -120,6 +123,19 @@ def _get_mic_devices() -> list[str]:
         return ["(デフォルト)"]
 
 
+def _get_speaker_devices() -> list[str]:
+    """Return list of loopback devices by comparing mic lists."""
+    try:
+        mics_all = sc.all_microphones(include_loopback=True)
+        mics_real = sc.all_microphones(include_loopback=False)
+        real_names = {m.name for m in mics_real}
+        
+        loopbacks = [m.name for m in mics_all if m.name not in real_names or "loopback" in m.name.lower()]
+        return ["(デフォルト)"] + sorted(list(set(loopbacks)))
+    except Exception:
+        return ["(デフォルト)"]
+
+
 # ── UI Palette ──────────────────────────────────────────────────────
 BG      = "#1a1d27"
 BG2     = "#22263a"
@@ -138,6 +154,7 @@ class SettingsWindow:
         self.loop         = loop
         self.settings     = load_settings()
         self._vars: dict[str, tk.Variable] = {}
+        self._loading     = True
 
         self.root = tk.Tk()
         self.root.title("SubtitLocar 設定パネル v0.4")
@@ -167,6 +184,7 @@ class SettingsWindow:
 
         self._build_ui()
         self._load_to_ui()
+        self._loading = False
         
         # Closing hook
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -291,7 +309,10 @@ class SettingsWindow:
                     fmt=lambda v: f"{int(v)} ms")
 
         self._section("システム設定 ★再起動後に有効")
-        self._audio_device_combobox()
+        self._radio("audioCaptureMode", "キャプチャ方式",
+                    [("マイク", "microphone"), ("システム音声", "loopback")])
+        self._audio_device_area()
+
         self._create_scale("micSensitivity", "マイク感度 (音量倍率):", 0.1, 5.0, 0.1)
         self._create_scale("vadThreshold", "無音判定レベル (ノイズ除去):", 0.01, 0.99, 0.01)
         self._scale("beamSize", "文字起こしの精度 (Beam Size):", 1, 10, 1, 
@@ -385,16 +406,61 @@ class SettingsWindow:
         cb.pack(side="left")
         cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
 
-    def _audio_device_combobox(self):
-        """Microphone input device picker."""
+    def _audio_device_area(self):
+        """Microphone or Loopback device picker area."""
+        self._dev_container = tk.Frame(self._frame, bg=BG)
+        self._dev_container.pack(fill="x", pady=0)
+
+        # Microphone Row
+        self._mic_row = tk.Frame(self._dev_container, bg=BG)
+        tk.Label(self._mic_row, text="マイクデバイス", font=("Segoe UI", 10),
+                 bg=BG, fg=FG, anchor="w", width=22).pack(side="left")
+        
         mic_devices = _get_mic_devices()
-        var = tk.StringVar()
-        self._vars["audioMicDevice"] = var
-        row = self._row("マイクデバイス")
-        cb = ttk.Combobox(row, textvariable=var, values=mic_devices,
-                          state="readonly", width=33)
-        cb.pack(side="left")
-        cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+        self._vars["audioMicDevice"] = tk.StringVar()
+        self._mic_cb = ttk.Combobox(self._mic_row, textvariable=self._vars["audioMicDevice"], 
+                                   values=mic_devices, state="readonly", width=33)
+        self._mic_cb.pack(side="left")
+        self._mic_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+
+        # Speaker Row
+        self._spk_row = tk.Frame(self._dev_container, bg=BG)
+        tk.Label(self._spk_row, text="スピーカーデバイス", font=("Segoe UI", 10),
+                 bg=BG, fg=FG, anchor="w", width=22).pack(side="left")
+
+        spk_devices = _get_speaker_devices()
+        self._vars["audioLoopbackDevice"] = tk.StringVar()
+        self._spk_cb = ttk.Combobox(self._spk_row, textvariable=self._vars["audioLoopbackDevice"], 
+                                   values=spk_devices, state="readonly", width=33)
+        self._spk_cb.pack(side="left")
+        self._spk_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+
+        # Update visibility initially
+        self._update_device_visibility()
+        
+        # Override _on_change to update visibility
+        orig_on_change = self._on_change
+        def on_change_with_viz():
+            orig_on_change()
+            self._update_device_visibility()
+        self._vars["audioCaptureMode"].trace_add("write", lambda *_: on_change_with_viz())
+
+    def _update_device_visibility(self):
+        mode = self._vars["audioCaptureMode"].get()
+        if mode == "loopback":
+            self._mic_row.pack_forget()
+            self._spk_row.pack(fill="x", pady=4)
+        else:
+            self._spk_row.pack_forget()
+            self._mic_row.pack(fill="x", pady=4)
+
+    def _get_mode_index(self):
+        # Helper to find where to re-pack
+        return 0 # Placeholder, simpler to just hide/show
+
+    def _audio_device_combobox(self):
+        """DEPRECATED - merged into _audio_device_area"""
+        pass
 
     def _ai_model_combobox(self):
         """Ollama AI model picker."""
@@ -473,9 +539,10 @@ class SettingsWindow:
 
     def _load_to_ui(self):
         for key, var in self._vars.items():
-            val = self.settings.get(key, DEFAULTS.get(key))
-            if val is None:
+            val = self.settings.get(key)
+            if val is None or val == "": # Fallback on empty string for essential UI fields
                 val = DEFAULTS.get(key, "")
+            
             if isinstance(var, tk.BooleanVar):
                 var.set(bool(val))
             elif isinstance(var, tk.DoubleVar):
@@ -503,6 +570,8 @@ class SettingsWindow:
         return {k: v for k, v in s.items() if k not in LOCAL_KEYS}
 
     def _on_change(self):
+        if self._loading:
+            return
         self.settings = self._read_from_ui()
         save_settings(self.settings)
         self._push({"type": "settings_update", "settings": self._ws_payload(self.settings)})
@@ -579,6 +648,12 @@ class SettingsWindow:
                     status = msg.get("status")
                     
                     if msg_type == "mic":
+                        mode = msg.get("mode", "microphone")
+                        if mode == "loopback":
+                            self._mic_ind.config(text=" ● システム音声 ")
+                        else:
+                            self._mic_ind.config(text=" ● マイク ")
+
                         if status == "active":
                             self._mic_ind.config(bg="#10b981", fg="white") # Emerald-500
                         else:

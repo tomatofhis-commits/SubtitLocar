@@ -31,8 +31,10 @@ if "cython" not in sys.modules:
     class _DummyShadow(types.ModuleType):
         def __init__(self):
             super().__init__("Cython.Shadow")
+            self.__file__ = None
+            self.__path__ = []
         def __getattr__(self, name):
-            if name == "__spec__":
+            if name in ("__spec__", "__file__", "__path__", "__loader__", "__package__"):
                 return None
             return lambda *args, **kwargs: None
 
@@ -70,7 +72,7 @@ def get_base_path() -> Path:
 # src ディレクトリをパスに追加
 sys.path.insert(0, str(get_base_path() / "src"))
 
-from audio_capture import AudioCapture, list_devices
+from audio_capture import AudioCapture, list_devices, list_loopback_devices
 from stt_engine import STTEngine
 from translator import Translator
 from websocket_server import WebSocketBroadcaster
@@ -122,7 +124,14 @@ def print_banner(config: dict) -> None:
     table.add_column(style="bold cyan", justify="right")
     table.add_column(style="white")
 
-    table.add_row("マイク", str(audio_cfg.get("microphone_name") or "(デフォルト)"))
+    mode = audio_cfg.get("mode", "microphone")
+    mode_label = "マイク" if mode == "microphone" else "システム音声"
+    table.add_row("方式", mode_label)
+    
+    if mode == "microphone":
+        table.add_row("デバイス", str(audio_cfg.get("microphone_name") or "(デフォルト)"))
+    else:
+        table.add_row("デバイス", str(audio_cfg.get("loopback_device_name") or "(デフォルト)"))
     table.add_row("STTモデル", f"{stt_cfg.get('model', 'large-v3')} [{stt_cfg.get('device', 'cuda').upper()}]")
     table.add_row("翻訳モデル", trans_cfg.get("model", "gemma3:12b"))
     table.add_row(
@@ -237,11 +246,21 @@ async def main() -> None:
                         pass
                 return False
 
-            if safe_load("audioMicDevice", audio_cfg, "microphone_name"):
-                if audio_cfg["microphone_name"] == "(デフォルト)":
-                    audio_cfg["microphone_name"] = None
-                else:
-                    console.print(f"[cyan]音声デバイス: {audio_cfg['microphone_name']}[/cyan]")
+            if safe_load("audioCaptureMode", audio_cfg, "mode"):
+                console.print(f"[cyan]キャプチャ方式: {audio_cfg['mode']}[/cyan]")
+
+            if audio_cfg.get("mode") == "loopback":
+                if safe_load("audioLoopbackDevice", audio_cfg, "loopback_device_name"):
+                    if audio_cfg["loopback_device_name"] == "(デフォルト)":
+                        audio_cfg["loopback_device_name"] = None
+                    else:
+                        console.print(f"[cyan]スピーカーデバイス: {audio_cfg['loopback_device_name']}[/cyan]")
+            else:
+                if safe_load("audioMicDevice", audio_cfg, "microphone_name"):
+                    if audio_cfg["microphone_name"] == "(デフォルト)":
+                        audio_cfg["microphone_name"] = None
+                    else:
+                        console.print(f"[cyan]マイクデバイス: {audio_cfg['microphone_name']}[/cyan]")
 
             if safe_load("aiModel", trans_cfg, "model"):
                 console.print(f"[cyan]AIモデル: {trans_cfg['model']}[/cyan]")
@@ -287,6 +306,7 @@ async def main() -> None:
     rprint("[dim]利用可能なオーディオデバイスを確認中...[/dim]")
     try:
         list_devices()
+        list_loopback_devices()
     except Exception as e:
         console.print(f"[yellow]デバイス一覧の取得に失敗: {e}[/yellow]")
 

@@ -68,6 +68,9 @@ nuitka_cmd = [
     "--include-package=httpx",
     "--include-package=yaml",
     "--include-package=rich",
+    "--include-package=soundcard",
+    "--include-package-data=soundcard",
+    "--include-package=cffi",
     "--nofollow-import-to=torch",
     # 諸悪の根源である av をNuitkaのコンパイル(C言語化)対象から完全に除外する
     "--nofollow-import-to=av",

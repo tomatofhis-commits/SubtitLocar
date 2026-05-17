@@ -14,8 +14,8 @@ stt:
   # Whisper model: tiny/base/small/medium/large-v2/large-v3
   model: "small"
   device: "cuda"
-  # Nuitka環境下での CUBLAS_STATUS_NOT_SUPPORTED 回避のため、最も安全な auto (自動フォールバック) を使用
-  compute_type: "auto"
+  # RTX 3060/4060ti環境では float16 が最も高速で標準的です
+  compute_type: "float16"
   language: "ja"
   device_index: 0
   # Faster-Whisper VAD threshold (0.01 - 0.99, higher = strict silence detection)
