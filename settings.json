@@ -27,7 +27,7 @@
   "beamSize": 5,
   "aiModel": "translategemma:4b",
   "sttLanguage": "Japanese",
-  "sttJapaneseModel": "Kotoba-Whisper v2.2 (有志版)",
+  "sttModel": "small (標準・軽量)",
   "transSourceLang": "Japanese",
   "transTargetLang": "English",
   "reconnectInterval": 3000

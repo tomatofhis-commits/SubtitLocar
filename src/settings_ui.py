@@ -83,7 +83,7 @@ DEFAULTS = {
     "audioLoopbackDevice": "(デフォルト)",
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
-    "sttJapaneseModel":  "Kotoba-Whisper v2.0 (公式)",
+    "sttModel":          "large-v3-turbo (標準・高速高精度)",
     "transSourceLang":   _trans_cfg.get("source_lang", "Japanese"),
     "transTargetLang":   _trans_cfg.get("target_lang", "English"),
     "micSensitivity":    1.0,
@@ -93,7 +93,7 @@ DEFAULTS = {
 
 LOCAL_KEYS = {
     "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
-    "sttLanguage", "sttJapaneseModel", "transSourceLang", "transTargetLang",
+    "sttLanguage", "sttModel", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize"
 }   # excluded from WS broadcast
 
@@ -101,7 +101,17 @@ LOCAL_KEYS = {
 def load_settings() -> dict:
     try:
         if SETTINGS_FILE.exists():
-            return {**DEFAULTS, **json.loads(SETTINGS_FILE.read_text("utf-8"))}
+            s = json.loads(SETTINGS_FILE.read_text("utf-8"))
+            # 移行措置: 旧 sttJapaneseModel を新 sttModel にマップ
+            if "sttJapaneseModel" in s and "sttModel" not in s:
+                ja_m = s["sttJapaneseModel"]
+                if ja_m == "Kotoba-Whisper v2.0 (公式)":
+                    s["sttModel"] = "Kotoba-Whisper v2.0 (日本語特化・公式)"
+                elif ja_m == "Kotoba-Whisper v2.2 (有志版)":
+                    s["sttModel"] = "Kotoba-Whisper v2.2 (日本語特化・有志版)"
+                else:
+                    s["sttModel"] = "large-v3-turbo (標準・高速高精度)"
+            return {**DEFAULTS, **s}
     except Exception:
         pass
     return dict(DEFAULTS)
@@ -320,7 +330,7 @@ class SettingsWindow:
                     fmt=lambda v: f"{int(v)}")
         self._ai_model_combobox()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
-        self._japanese_model_combobox()
+        self._stt_model_combobox()
         self._language_combobox("transSourceLang", "翻訳元の言語")
         self._language_combobox("transTargetLang", "翻訳先の言語")
 
@@ -670,33 +680,50 @@ class SettingsWindow:
                     
         self.root.after(100, self._poll_status_queue)
 
-    def _japanese_model_combobox(self):
-        """Japanese STT Model picker (Kotoba-Whisper v2.0 / v2.2 / Default)."""
-        models = [
-            "Kotoba-Whisper v2.0 (公式)",
-            "Kotoba-Whisper v2.2 (有志版)",
-            "デフォルトモデルを使用"
-        ]
+    def _stt_model_combobox(self):
+        """STT Model picker (dynamic options based on language)."""
         var = tk.StringVar()
-        self._vars["sttJapaneseModel"] = var
+        self._vars["sttModel"] = var
         
-        self._stt_ja_row = self._row("日本語音声認識モデル")
-        self._stt_ja_cb = ttk.Combobox(self._stt_ja_row, textvariable=var, values=models,
-                                       state="readonly", width=33)
-        self._stt_ja_cb.pack(side="left")
-        self._stt_ja_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+        self._stt_row = self._row("音声認識モデル (STT)")
+        self._stt_cb = ttk.Combobox(self._stt_row, textvariable=var,
+                                    state="readonly", width=33)
+        self._stt_cb.pack(side="left")
+        self._stt_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
         
-        self._update_stt_ja_visibility()
+        self._update_stt_model_options()
         
         # sttLanguageの変更を追従
-        self._vars["sttLanguage"].trace_add("write", lambda *_: self._update_stt_ja_visibility())
+        self._vars["sttLanguage"].trace_add("write", lambda *_: self._update_stt_model_options())
         
-    def _update_stt_ja_visibility(self):
+    def _update_stt_model_options(self):
         lang = self._vars["sttLanguage"].get()
+        
+        ja_models = [
+            "large-v3-turbo (標準・高速高精度)",
+            "small (標準・軽量)",
+            "large-v3 (標準・超高精度)",
+            "Kotoba-Whisper v2.2 (日本語特化・有志版)",
+            "Kotoba-Whisper v2.0 (日本語特化・公式)"
+        ]
+        other_models = [
+            "large-v3-turbo (標準・高速高精度)",
+            "small (標準・軽量)",
+            "large-v3 (標準・超高精度)"
+        ]
+        
+        current_val = self._vars["sttModel"].get()
+        
         if "Japanese" in lang:
-            self._stt_ja_cb.config(state="readonly")
+            self._stt_cb.config(values=ja_models)
+            # 値が空か選択肢にない場合、推奨される v2.2 を自動セット
+            if current_val not in ja_models:
+                self._vars["sttModel"].set("Kotoba-Whisper v2.2 (日本語特化・有志版)")
         else:
-            self._stt_ja_cb.config(state="disabled")
+            self._stt_cb.config(values=other_models)
+            # 日本語特化モデルが選ばれていた場合は、標準モデルに強制切り替え
+            if "Kotoba-Whisper" in current_val or current_val not in other_models:
+                self._vars["sttModel"].set("large-v3-turbo (標準・高速高精度)")
 
     def run(self):
         self.root.mainloop()

@@ -281,17 +281,40 @@ async def main() -> None:
                         stt_cfg["language"] = mapped
                         console.print(f"[cyan]音声認識言語: {stt_lang} ({mapped})[/cyan]")
 
-            # 日本語モデル自動ロード処理
-            if stt_cfg.get("language") == "ja":
-                ja_model = sj.get("sttJapaneseModel")
-                if ja_model == "Kotoba-Whisper v2.0 (公式)":
-                    stt_cfg["model"] = "kotoba-tech/kotoba-whisper-v2.0-faster"
-                    console.print("[cyan]日本語特化モデル: Kotoba-Whisper v2.0 (公式)[/cyan]")
-                elif ja_model == "Kotoba-Whisper v2.2 (有志版)":
+            # 音声認識モデル (STT) ロード処理
+            stt_model_setting = sj.get("sttModel")
+            
+            # 旧 sttJapaneseModel からの移行対応（settings.json が古い場合）
+            if not stt_model_setting and sj.get("sttJapaneseModel"):
+                old_ja_model = sj.get("sttJapaneseModel")
+                if old_ja_model == "Kotoba-Whisper v2.0 (公式)":
+                    stt_model_setting = "Kotoba-Whisper v2.0 (日本語特化・公式)"
+                elif old_ja_model == "Kotoba-Whisper v2.2 (有志版)":
+                    stt_model_setting = "Kotoba-Whisper v2.2 (日本語特化・有志版)"
+
+            if stt_model_setting:
+                # 日本語特化モデルの判定
+                if "Kotoba-Whisper v2.2" in stt_model_setting and stt_cfg.get("language") == "ja":
                     stt_cfg["model"] = "RoachLin/kotoba-whisper-v2.2-faster"
-                    console.print("[cyan]日本語特化モデル: Kotoba-Whisper v2.2 (有志版)[/cyan]")
+                    console.print("[cyan]音声認識モデル: Kotoba-Whisper v2.2 (日本語特化・有志版)[/cyan]")
+                elif "Kotoba-Whisper v2.0" in stt_model_setting and stt_cfg.get("language") == "ja":
+                    stt_cfg["model"] = "kotoba-tech/kotoba-whisper-v2.0-faster"
+                    console.print("[cyan]音声認識モデル: Kotoba-Whisper v2.0 (日本語特化・公式)[/cyan]")
+                elif "small" in stt_model_setting:
+                    stt_cfg["model"] = "small"
+                    console.print("[cyan]音声認識モデル: small (標準・軽量)[/cyan]")
+                elif "large-v3-turbo" in stt_model_setting:
+                    stt_cfg["model"] = "large-v3-turbo"
+                    console.print("[cyan]音声認識モデル: large-v3-turbo (標準・高速高精度)[/cyan]")
+                elif "large-v3" in stt_model_setting:
+                    stt_cfg["model"] = "large-v3"
+                    console.print("[cyan]音声認識モデル: large-v3 (標準・超高精度)[/cyan]")
                 else:
-                    console.print("[cyan]日本語モデル: デフォルトモデルを使用[/cyan]")
+                    # 言語が日本語以外で Kotoba-Whisper が選ばれてしまっている場合などのフォールバック
+                    stt_cfg["model"] = "large-v3-turbo"
+                    console.print("[cyan]音声認識モデル: large-v3-turbo (標準・高速高精度)[/cyan]")
+            else:
+                console.print("[cyan]音声認識モデル: デフォルトモデルを使用[/cyan]")
 
             safe_load("transSourceLang", trans_cfg, "source_lang")
             safe_load("transTargetLang", trans_cfg, "target_lang")
