@@ -83,6 +83,7 @@ DEFAULTS = {
     "audioLoopbackDevice": "(デフォルト)",
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
+    "sttJapaneseModel":  "Kotoba-Whisper v2.0 (公式)",
     "transSourceLang":   _trans_cfg.get("source_lang", "Japanese"),
     "transTargetLang":   _trans_cfg.get("target_lang", "English"),
     "micSensitivity":    1.0,
@@ -92,7 +93,7 @@ DEFAULTS = {
 
 LOCAL_KEYS = {
     "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
-    "sttLanguage", "transSourceLang", "transTargetLang",
+    "sttLanguage", "sttJapaneseModel", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize"
 }   # excluded from WS broadcast
 
@@ -157,7 +158,7 @@ class SettingsWindow:
         self._loading     = True
 
         self.root = tk.Tk()
-        self.root.title("SubtitLocar 設定パネル v0.6")
+        self.root.title("SubtitLocar 設定パネル v0.7")
         self.root.geometry("520x760")
         self.root.configure(bg=BG)
         self.root.resizable(True, True)
@@ -319,6 +320,7 @@ class SettingsWindow:
                     fmt=lambda v: f"{int(v)}")
         self._ai_model_combobox()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
+        self._japanese_model_combobox()
         self._language_combobox("transSourceLang", "翻訳元の言語")
         self._language_combobox("transTargetLang", "翻訳先の言語")
 
@@ -667,6 +669,34 @@ class SettingsWindow:
                     pass
                     
         self.root.after(100, self._poll_status_queue)
+
+    def _japanese_model_combobox(self):
+        """Japanese STT Model picker (Kotoba-Whisper v2.0 / v2.2 / Default)."""
+        models = [
+            "Kotoba-Whisper v2.0 (公式)",
+            "Kotoba-Whisper v2.2 (有志版)",
+            "デフォルトモデルを使用"
+        ]
+        var = tk.StringVar()
+        self._vars["sttJapaneseModel"] = var
+        
+        self._stt_ja_row = self._row("日本語音声認識モデル")
+        self._stt_ja_cb = ttk.Combobox(self._stt_ja_row, textvariable=var, values=models,
+                                       state="readonly", width=33)
+        self._stt_ja_cb.pack(side="left")
+        self._stt_ja_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+        
+        self._update_stt_ja_visibility()
+        
+        # sttLanguageの変更を追従
+        self._vars["sttLanguage"].trace_add("write", lambda *_: self._update_stt_ja_visibility())
+        
+    def _update_stt_ja_visibility(self):
+        lang = self._vars["sttLanguage"].get()
+        if "Japanese" in lang:
+            self._stt_ja_cb.config(state="readonly")
+        else:
+            self._stt_ja_cb.config(state="disabled")
 
     def run(self):
         self.root.mainloop()

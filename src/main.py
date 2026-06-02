@@ -141,7 +141,7 @@ def print_banner(config: dict) -> None:
 
     panel = Panel(
         table,
-        title="[bold yellow] SubtitLocar v0.6 [/bold yellow]",
+        title="[bold yellow] SubtitLocar v0.7 [/bold yellow]",
         subtitle="[dim]Ctrl+C to quit[/dim]",
         border_style="bright_blue",
         padding=(1, 2),
@@ -280,6 +280,18 @@ async def main() -> None:
                     if mapped:
                         stt_cfg["language"] = mapped
                         console.print(f"[cyan]音声認識言語: {stt_lang} ({mapped})[/cyan]")
+
+            # 日本語モデル自動ロード処理
+            if stt_cfg.get("language") == "ja":
+                ja_model = sj.get("sttJapaneseModel")
+                if ja_model == "Kotoba-Whisper v2.0 (公式)":
+                    stt_cfg["model"] = "kotoba-tech/kotoba-whisper-v2.0-faster"
+                    console.print("[cyan]日本語特化モデル: Kotoba-Whisper v2.0 (公式)[/cyan]")
+                elif ja_model == "Kotoba-Whisper v2.2 (有志版)":
+                    stt_cfg["model"] = "RoachLin/kotoba-whisper-v2.2-faster"
+                    console.print("[cyan]日本語特化モデル: Kotoba-Whisper v2.2 (有志版)[/cyan]")
+                else:
+                    console.print("[cyan]日本語モデル: デフォルトモデルを使用[/cyan]")
 
             safe_load("transSourceLang", trans_cfg, "source_lang")
             safe_load("transTargetLang", trans_cfg, "target_lang")
