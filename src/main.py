@@ -141,7 +141,7 @@ def print_banner(config: dict) -> None:
 
     panel = Panel(
         table,
-        title="[bold yellow] SubtitLocar v0.4 [/bold yellow]",
+        title="[bold yellow] SubtitLocar v0.5 [/bold yellow]",
         subtitle="[dim]Ctrl+C to quit[/dim]",
         border_style="bright_blue",
         padding=(1, 2),

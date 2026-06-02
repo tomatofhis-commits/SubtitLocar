@@ -24,7 +24,7 @@
   "audioLoopbackDevice": "Digital Audio (S/PDIF) (High Definition Audio Device)",
   "micSensitivity": 0.9,
   "vadThreshold": 0.51,
-  "beamSize": 1,
+  "beamSize": 5,
   "aiModel": "translategemma:4b",
   "sttLanguage": "Japanese",
   "transSourceLang": "Japanese",

@@ -125,127 +125,156 @@ class AudioCapture:
     # ------------------------------------------------------------------
 
     def _capture_mic(self) -> None:
-        """Capture from microphone using sounddevice with VAD."""
-        device_idx = _find_input_device_index(self.mic_name)
-        if device_idx is None:
-            default = sd.query_devices(kind="input")
-            logger.info(f"Using default microphone: {default['name']}")
+        """Capture from microphone using sounddevice with robust reconnection logic."""
+        import time
+        retry_delay = 2.0
 
-        raw_queue: stdlib_queue.Queue = stdlib_queue.Queue()
+        while not self._stop_event.is_set():
+            local_stop = threading.Event()
+            try:
+                device_idx = _find_input_device_index(self.mic_name)
+                if device_idx is None:
+                    default = sd.query_devices(kind="input")
+                    logger.info(f"Using default microphone: {default['name']}")
 
-        def callback(indata: np.ndarray, frames: int, time_info, status):
-            if status:
-                logger.warning(f"sounddevice status: {status}")
-            # indata shape: (frames, channels) - take mono
-            raw_queue.put(indata[:, 0].copy())
+                raw_queue: stdlib_queue.Queue = stdlib_queue.Queue()
 
-        with sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            dtype="float32",
-            blocksize=self.frame_size,
-            device=device_idx,
-            callback=callback,
-        ):
-            self._vad_loop_from_queue(raw_queue)
+                def callback(indata: np.ndarray, frames: int, time_info, status):
+                    if status:
+                        logger.warning(f"sounddevice status: {status}")
+                    frame = indata[:, 0]
+                    if self.sensitivity != 1.0:
+                        frame = frame * self.sensitivity
+                    raw_queue.put(frame.copy())
+
+                def run_vad():
+                    self._vad_loop_from_queue(raw_queue, local_stop)
+
+                vad_thread = threading.Thread(target=run_vad, daemon=True, name="MicVAD")
+                vad_thread.start()
+
+                with sd.InputStream(
+                    samplerate=self.sample_rate,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=self.frame_size,
+                    device=device_idx,
+                    callback=callback,
+                ):
+                    logger.info("Microphone input stream started successfully.")
+                    while not self._stop_event.is_set():
+                        time.sleep(0.5)
+
+                local_stop.set()
+                break
+
+            except Exception as e:
+                logger.error(f"Microphone capture error or disconnected: {e}. Retrying in {retry_delay} seconds...")
+                local_stop.set()
+                for _ in range(int(retry_delay * 10)):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(0.1)
 
     # ------------------------------------------------------------------
     # Loopback capture (soundcard - WASAPI loopback)
     # ------------------------------------------------------------------
 
     def _capture_loopback(self) -> None:
-        """Capture from system audio using soundcard library."""
-        try:
-            device = None
-            mics_all = sc.all_microphones(include_loopback=True)
-            mics_real = sc.all_microphones(include_loopback=False)
-            real_names = {m.name for m in mics_real}
-            
-            loopback_mics = [m for m in mics_all if m.name not in real_names or "loopback" in m.name.lower()]
+        """Capture from system audio using soundcard library with robust reconnection logic."""
+        import time
+        retry_delay = 2.0
 
-            if self.loopback_name:
-                for m in loopback_mics:
-                    # Match by name if provided
-                    if self.loopback_name.lower() in m.name.lower():
-                        device = m
-                        break
-            
-            if device is None and loopback_mics:
-                # Automatic fallback: use the first identified loopback
-                device = loopback_mics[0]
-            
-            if device is None:
-                # Still none? Log all and raise
-                logger.error("No loopback-capable devices identified.")
-                raise ValueError(f"No loopback device found. See log for available devices.")
-            
-            logger.info(f"Using loopback device: {device.name}")
-
-            raw_queue: stdlib_queue.Queue = stdlib_queue.Queue()
-            
-            # Start VAD loop thread first
-            threading.Thread(target=self._vad_loop_from_queue, args=(raw_queue,), daemon=True).start()
-
-            logger.info(f"Starting loopback recorder at {self.sample_rate}Hz...")
-            with device.recorder(samplerate=self.sample_rate) as recorder:
-                # --- Buffer Drain Phase ---
-                # Skip first 0.5s of audio to avoid processing stale buffer
-                drain_frames = int(self.sample_rate * 0.5)
-                logger.info("Draining initial loopback buffer...")
-                try:
-                    recorder.record(numframes=drain_frames)
-                except Exception:
-                    pass
+        while not self._stop_event.is_set():
+            local_stop = threading.Event()
+            try:
+                device = None
+                mics_all = sc.all_microphones(include_loopback=True)
+                mics_real = sc.all_microphones(include_loopback=False)
+                real_names = {m.name for m in mics_real}
                 
-                # Now start VAD loop thread
-                threading.Thread(target=self._vad_loop_from_queue, args=(raw_queue,), daemon=True).start()
+                loopback_mics = [m for m in mics_all if m.name not in real_names or "loopback" in m.name.lower()]
 
-                while not self._stop_event.is_set():
-                    # Record a larger block (90ms = frame_size * 3) to be more robust
-                    data = recorder.record(numframes=self.frame_size * 3)
+                if self.loopback_name:
+                    for m in loopback_mics:
+                        if self.loopback_name.lower() in m.name.lower():
+                            device = m
+                            break
+                
+                if device is None and loopback_mics:
+                    device = loopback_mics[0]
+                
+                if device is None:
+                    logger.warning("No loopback-capable devices identified. Retrying in 2 seconds...")
+                    time.sleep(retry_delay)
+                    continue
+                
+                logger.info(f"Using loopback device: {device.name}")
+
+                raw_queue: stdlib_queue.Queue = stdlib_queue.Queue()
+                
+                def run_vad():
+                    self._vad_loop_from_queue(raw_queue, local_stop)
+                
+                vad_thread = threading.Thread(target=run_vad, daemon=True, name="LoopbackVAD")
+                vad_thread.start()
+
+                logger.info(f"Starting loopback recorder at {self.sample_rate}Hz...")
+                with device.recorder(samplerate=self.sample_rate) as recorder:
+                    drain_frames = int(self.sample_rate * 0.5)
+                    logger.info("Draining initial loopback buffer...")
+                    try:
+                        recorder.record(numframes=drain_frames)
+                    except Exception:
+                        pass
                     
-                    if data is None or len(data) == 0:
-                        import time
-                        time.sleep(0.01)
-                        continue
-
-                    # Split the large block back into 30ms frames for VAD
-                    for i in range(0, len(data), self.frame_size):
-                        frame = data[i : i + self.frame_size]
-                        if len(frame) < self.frame_size:
+                    while not self._stop_event.is_set():
+                        data = recorder.record(numframes=self.frame_size * 3)
+                        
+                        if data is None or len(data) == 0:
+                            time.sleep(0.01)
                             continue
-                        
-                        # Convert to mono
-                        if frame.ndim > 1 and frame.shape[1] > 1:
-                            frame = np.mean(frame, axis=1)
-                        elif frame.ndim > 1:
-                            frame = frame[:, 0]
-                        
-                        # Apply sensitivity
-                        if self.sensitivity != 1.0:
-                            frame = frame * self.sensitivity
-                            
-                        raw_queue.put(frame)
-                    
-                    # Debug: log if signal is detected (every 100 frames to avoid spam)
-                    if not hasattr(self, '_loop_count'): self._loop_count = 0
-                    self._loop_count += 1
-                    if self._loop_count % 100 == 0:
-                        max_amp = np.max(np.abs(data))
-                        if max_amp > 0.001:
-                            logger.debug(f"Loopback audio detected: max_amp={max_amp:.4f}")
-                        elif self._loop_count % 500 == 0:
-                            logger.info(f"Loopback heart-beat: max_amp={max_amp:.4f} (Silence?)")
 
-        except Exception as e:
-            logger.error(f"Loopback capture failed: {e}")
-            raise
+                        for i in range(0, len(data), self.frame_size):
+                            frame = data[i : i + self.frame_size]
+                            if len(frame) < self.frame_size:
+                                continue
+                            
+                            if frame.ndim > 1 and frame.shape[1] > 1:
+                                frame = np.mean(frame, axis=1)
+                            elif frame.ndim > 1:
+                                frame = frame[:, 0]
+                            
+                            if self.sensitivity != 1.0:
+                                frame = frame * self.sensitivity
+                                
+                            raw_queue.put(frame)
+                        
+                        if not hasattr(self, '_loop_count'): self._loop_count = 0
+                        self._loop_count += 1
+                        if self._loop_count % 100 == 0:
+                            max_amp = np.max(np.abs(data))
+                            if max_amp > 0.001:
+                                logger.debug(f"Loopback audio detected: max_amp={max_amp:.4f}")
+                            elif self._loop_count % 500 == 0:
+                                logger.info(f"Loopback heart-beat: max_amp={max_amp:.4f} (Silence?)")
+                
+                local_stop.set()
+                break
+
+            except Exception as e:
+                logger.error(f"Loopback capture error or disconnected: {e}. Retrying in {retry_delay} seconds...")
+                local_stop.set()
+                for _ in range(int(retry_delay * 10)):
+                    if self._stop_event.is_set():
+                        break
+                    time.sleep(0.1)
 
     # ------------------------------------------------------------------
     # VAD processing loop
     # ------------------------------------------------------------------
 
-    def _vad_loop_from_queue(self, raw_queue: stdlib_queue.Queue) -> None:
+    def _vad_loop_from_queue(self, raw_queue: stdlib_queue.Queue, local_stop: Optional[threading.Event] = None) -> None:
         """
         Pull frames from raw_queue, apply VAD, and enqueue speech segments.
         Segments are flushed either when silence is detected OR when max_segment_sec is exceeded.
@@ -254,19 +283,17 @@ class AudioCapture:
         silent_frames = 0
         is_speaking = False
         
-        # 安全装置: 最大10秒で強制的に切り出す (システム音声は無音が少ないため短めに設定)
         max_sec = 10.0 if self.mode == "loopback" else 15.0
         max_segment_frames = int(max_sec * 1000 / self.FRAME_DURATION_MS)
 
-
-
         while not self._stop_event.is_set():
+            if local_stop and local_stop.is_set():
+                break
             try:
                 frame: np.ndarray = raw_queue.get(timeout=0.1)
             except stdlib_queue.Empty:
                 continue
 
-            # Ensure exactly frame_size samples
             if len(frame) < self.frame_size:
                 frame = np.pad(frame, (0, self.frame_size - len(frame)))
             elif len(frame) > self.frame_size:
@@ -286,7 +313,6 @@ class AudioCapture:
                         self.status_queue.put({"type": "mic", "status": "active", "mode": self.mode})
                 buffer.append(frame)
 
-                # 強制切り出しチェック (ノイズ等で途切れない場合のストッパー)
                 if len(buffer) >= max_segment_frames:
                     segment = np.concatenate(buffer)
                     self._enqueue(segment)
@@ -313,7 +339,15 @@ class AudioCapture:
         
         logger.info(f"Speech segment queued: {duration:.2f}s (Max Amp: {np.max(np.abs(segment)):.4f})")
 
-        asyncio.run_coroutine_threadsafe(
-            self.audio_queue.put(segment),
-            self.loop
-        )
+        def _put_or_drop():
+            try:
+                self.audio_queue.put_nowait(segment)
+            except asyncio.QueueFull:
+                logger.warning("Audio queue is full. Dropping older speech segment to avoid memory leak / lag.")
+                try:
+                    self.audio_queue.get_nowait()
+                    self.audio_queue.put_nowait(segment)
+                except Exception:
+                    pass
+
+        self.loop.call_soon_threadsafe(_put_or_drop)
