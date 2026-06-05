@@ -141,7 +141,7 @@ def print_banner(config: dict) -> None:
 
     panel = Panel(
         table,
-        title="[bold yellow] SubtitLocar v0.7 [/bold yellow]",
+        title="[bold yellow] SubtitLocar v0.8 [/bold yellow]",
         subtitle="[dim]Ctrl+C to quit[/dim]",
         border_style="bright_blue",
         padding=(1, 2),
@@ -315,6 +315,19 @@ async def main() -> None:
                     console.print("[cyan]音声認識モデル: large-v3-turbo (標準・高速高精度)[/cyan]")
             else:
                 console.print("[cyan]音声認識モデル: デフォルトモデルを使用[/cyan]")
+
+            # GPUデバイス（STT用）の指定
+            gpu_device = sj.get("sttGpuDevice")
+            if gpu_device:
+                try:
+                    if "GPU " in gpu_device:
+                        idx_str = gpu_device.split("GPU ")[1].split(":")[0].strip()
+                        stt_cfg["device_index"] = int(idx_str)
+                        console.print(f"[cyan]使用GPU (STT): GPU {stt_cfg['device_index']}[/cyan]")
+                    else:
+                        stt_cfg["device_index"] = 0
+                except Exception:
+                    stt_cfg["device_index"] = 0
 
             safe_load("transSourceLang", trans_cfg, "source_lang")
             safe_load("transTargetLang", trans_cfg, "target_lang")

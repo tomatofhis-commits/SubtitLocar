@@ -44,6 +44,43 @@ _cfg = __get_config_yaml()
 _stt_cfg = _cfg.get("stt", {})
 _trans_cfg = _cfg.get("translation", {})
 
+def _get_gpu_devices() -> list[str]:
+    """Detect available CUDA GPU names and indices."""
+    gpus = ["GPU 0 (デフォルト)"]
+    try:
+        import ctranslate2
+        count = ctranslate2.get_cuda_device_count()
+    except Exception:
+        count = 0
+
+    if count <= 1:
+        return gpus
+
+    import subprocess
+    names = []
+    try:
+        res = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, check=True
+        )
+        names = [line.strip() for line in res.stdout.strip().split("\n") if line.strip()]
+    except Exception:
+        try:
+            res = subprocess.run(
+                ["wmic", "path", "win32_VideoController", "get", "name"],
+                capture_output=True, text=True, check=True
+            )
+            lines = [line.strip() for line in res.stdout.split("\n")[1:] if line.strip()]
+            names = [l for l in lines if "NVIDIA" in l]
+        except Exception:
+            pass
+
+    gpus = []
+    for i in range(count):
+        name = names[i] if i < len(names) else "NVIDIA GPU"
+        gpus.append(f"GPU {i}: {name}")
+    return gpus
+
 _LANG_MAP_REV = {
     "ja": "Japanese", "en": "English", "zh": "Chinese", 
     "ko": "Korean", "es": "Spanish", "fr": "French", 
@@ -84,6 +121,7 @@ DEFAULTS = {
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
     "sttModel":          "large-v3-turbo (標準・高速高精度)",
+    "sttGpuDevice":      "GPU 0 (デフォルト)",
     "transSourceLang":   _trans_cfg.get("source_lang", "Japanese"),
     "transTargetLang":   _trans_cfg.get("target_lang", "English"),
     "micSensitivity":    1.0,
@@ -93,7 +131,7 @@ DEFAULTS = {
 
 LOCAL_KEYS = {
     "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
-    "sttLanguage", "sttModel", "transSourceLang", "transTargetLang",
+    "sttLanguage", "sttModel", "sttGpuDevice", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize"
 }   # excluded from WS broadcast
 
@@ -168,7 +206,7 @@ class SettingsWindow:
         self._loading     = True
 
         self.root = tk.Tk()
-        self.root.title("SubtitLocar 設定パネル v0.7")
+        self.root.title("SubtitLocar 設定パネル v0.8")
         self.root.geometry("520x760")
         self.root.configure(bg=BG)
         self.root.resizable(True, True)
@@ -331,6 +369,7 @@ class SettingsWindow:
         self._ai_model_combobox()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
         self._stt_model_combobox()
+        self._gpu_device_combobox()
         self._language_combobox("transSourceLang", "翻訳元の言語")
         self._language_combobox("transTargetLang", "翻訳先の言語")
 
@@ -724,6 +763,23 @@ class SettingsWindow:
             # 日本語特化モデルが選ばれていた場合は、標準モデルに強制切り替え
             if "Kotoba-Whisper" in current_val or current_val not in other_models:
                 self._vars["sttModel"].set("large-v3-turbo (標準・高速高精度)")
+
+    def _gpu_device_combobox(self):
+        """GPU device picker for STT."""
+        gpus = _get_gpu_devices()
+        var = tk.StringVar()
+        self._vars["sttGpuDevice"] = var
+        
+        self._gpu_row = self._row("使用するGPU (STT用)")
+        self._gpu_cb = ttk.Combobox(self._gpu_row, textvariable=var, values=gpus,
+                                    state="readonly", width=33)
+        self._gpu_cb.pack(side="left")
+        self._gpu_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+        
+        # GPUが1つ以下の場合は選択の余地がないため無効化
+        if len(gpus) <= 1:
+            self._gpu_cb.config(state="disabled")
+            self._vars["sttGpuDevice"].set(gpus[0])
 
     def run(self):
         self.root.mainloop()
