@@ -21,6 +21,9 @@ import types
 if "CUDA_VISIBLE_DEVICES" in os.environ and os.environ["CUDA_VISIBLE_DEVICES"].startswith("GPU-"):
     del os.environ["CUDA_VISIBLE_DEVICES"]
 
+# CUDAのデバイス認識順序を物理バスID順（nvidia-smi や wmic の出力順）に固定する
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+
 # === Nuitka Bug Workaround for av / Cython ===
 # Nuitka compiled PyAV sources crash looking for `__spec__` in Cython.Shadow.
 # This mock bypasses the runtime Cython dependency entirely.
