@@ -127,12 +127,20 @@ DEFAULTS = {
     "micSensitivity":    1.0,
     "vadThreshold":      0.15,
     "beamSize":          5,
+    # Overlay Settings
+    "overlayEnabled":      False,
+    "overlaySize":         "medium",
+    "overlayBgStyle":      "with_bg",
+    "overlayTransparency": 0,
+    "overlayX":            960,  # 画面中央(1920の半分)
+    "overlayY":            900,  # 画面下部付近
 }
 
 LOCAL_KEYS = {
     "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
     "sttLanguage", "sttModel", "sttGpuDevice", "transSourceLang", "transTargetLang",
-    "micSensitivity", "vadThreshold", "beamSize"
+    "micSensitivity", "vadThreshold", "beamSize",
+    "overlayEnabled", "overlaySize", "overlayBgStyle", "overlayTransparency", "overlayX", "overlayY"
 }   # excluded from WS broadcast
 
 
@@ -235,6 +243,33 @@ class SettingsWindow:
         self._load_to_ui()
         self._loading = False
         
+        # Initialize Overlay Window Manager
+        try:
+            from overlay_window import OverlayWindowManager
+            self.overlay_mgr = OverlayWindowManager()
+            
+            def _pos_changed(x, y):
+                self.settings["overlayX"] = x
+                self.settings["overlayY"] = y
+                save_settings(self.settings)
+            self.overlay_mgr.on_position_changed = _pos_changed
+            
+            # Apply initial settings
+            self.overlay_mgr.update_settings(self.settings)
+            
+            # Repositioning control based on settings window focus
+            def on_focus_in(event):
+                if event.widget == self.root:
+                    self.overlay_mgr.set_draggable_mode(True)
+            def on_focus_out(event):
+                if event.widget == self.root:
+                    self.overlay_mgr.set_draggable_mode(False)
+                    
+            self.root.bind("<FocusIn>", on_focus_in)
+            self.root.bind("<FocusOut>", on_focus_out)
+        except Exception as e:
+            logger.error(f"Failed to initialize overlay window: {e}")
+
         # Closing hook
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         
@@ -336,6 +371,15 @@ class SettingsWindow:
                     fmt=lambda v: "無制限" if v == 0 else f"{int(v)} 文字")
         self._scale("displayDuration", "自動非表示時間",           0, 30000, 500,
                     fmt=lambda v: "OFF" if v == 0 else f"{v/1000:.1f} 秒")
+
+        self._section("オーバーレイ表示設定（ゲーム画面等への表示）")
+        self._checkbox("overlayEnabled", "ゲーム画面上に翻訳字幕をオーバーレイ表示")
+        self._radio("overlayBgStyle", "オーバーレイの背景スタイル",
+                    [("背景なし(文字のみ)", "text_only"), ("半透明背景あり", "with_bg")])
+        self._radio("overlaySize", "オーバーレイの枠幅",
+                    [("小(35%)", "small"), ("中(50%)", "medium"), ("大(70%)", "large")])
+        self._radio("overlayTransparency", "文字・背景の透明度 (薄さ)",
+                    [("0% (はっきり)", "0"), ("30% (少し薄い)", "30"), ("60% (かなり薄い)", "60")])
 
         self._section("フォント")
         self._font_combobox("fontFamily", "フォント (通常)")
@@ -603,7 +647,7 @@ class SettingsWindow:
 
     def _read_from_ui(self) -> dict:
         INT_KEYS = {"maxBlocks", "fontSizeOrig", "fontSizeTrans",
-                    "outlineWidth", "typewriterSpeed", "maxCharsPerLine", "displayDuration", "beamSize"}
+                    "outlineWidth", "typewriterSpeed", "maxCharsPerLine", "displayDuration", "beamSize", "overlayTransparency"}
         result = {}
         for key, var in self._vars.items():
             val = var.get()
@@ -625,6 +669,9 @@ class SettingsWindow:
             return
         self.settings = self._read_from_ui()
         save_settings(self.settings)
+        # Update overlay window parameters dynamically
+        if hasattr(self, "overlay_mgr") and self.overlay_mgr is not None:
+            self.overlay_mgr.update_settings(self.settings)
         self._push({"type": "settings_update", "settings": self._ws_payload(self.settings)})
         self._flash_status("設定を送信")
 
@@ -714,9 +761,19 @@ class SettingsWindow:
                             self._ai_ind.config(bg="#f59e0b", fg="white") # Amber-500
                         else:
                             self._ai_ind.config(bg=BG2, fg=MUTED)
+                    elif msg_type == "overlay_subtitle":
+                        source = msg.get("source", "mic")
+                        if source == "mic":
+                            translated_text = msg.get("translated", "")
+                            if hasattr(self, "overlay_mgr") and self.overlay_mgr is not None:
+                                self.overlay_mgr.update_text(translated_text)
                 except Exception:
                     pass
                     
+        # Update overlay window's own mainloop step
+        if hasattr(self, "overlay_mgr") and self.overlay_mgr is not None:
+            self.overlay_mgr.run_step()
+            
         self.root.after(100, self._poll_status_queue)
 
     def _stt_model_combobox(self):

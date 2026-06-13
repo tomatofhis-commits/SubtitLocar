@@ -120,6 +120,13 @@ class Translator:
             "source": source
         })
 
+        if self.status_queue is not None:
+            self.status_queue.put({
+                "type": "overlay_subtitle",
+                "translated": translated,
+                "source": source
+            })
+
     async def _translate(self, client: httpx.AsyncClient, text: str) -> str:
         """Ollama /api/chat を呼び出して翻訳する（ストリーミング）"""
         if self.status_queue is not None:
