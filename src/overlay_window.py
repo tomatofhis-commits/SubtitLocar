@@ -84,6 +84,9 @@ class OverlayWindowManager:
         
         self.font_family = font_family
         self.current_text = ""
+        # Create a single font object for text measurement to prevent Tkinter resource leaks
+        self.measure_font = tkfont.Font(family=self.font_family)
+        self.display_font = tkfont.Font(family=self.font_family, weight="bold")
         
         # Default settings (will be updated dynamically by settings_ui/main)
         self.enabled = False
@@ -234,7 +237,6 @@ class OverlayWindowManager:
         self.text_color = settings.get("colorTrans", "#ffffff")
         self.outline_color = settings.get("outlineColor", "#000000")
         self.outline_width = int(settings.get("outlineWidth", 2))
-        self.base_font_size = int(settings.get("fontSizeTrans", 46))
         
         # Set drag mode
         drag_enabled = settings.get("overlayDragMode", False)
@@ -279,16 +281,20 @@ class OverlayWindowManager:
             self.text_win.deiconify()
             force_topmost(self.text_hwnd)
 
-    def get_max_width(self) -> int:
-        """Determine width of box based on size mode."""
+    def get_max_width_and_font(self) -> Tuple[int, int]:
+        """Determine width of box and font size based on size mode."""
         if self.size_mode == "small":
             width_pct = 0.35
+            base_font_size = 24
         elif self.size_mode == "large":
             width_pct = 0.70
+            base_font_size = 48
         else: # medium (default)
             width_pct = 0.50
+            base_font_size = 36
             
-        return int(self.screen_w * width_pct)
+        width = int(self.screen_w * width_pct)
+        return width, base_font_size
 
     def calculate_fitting_text(self, text: str, max_w: int, base_font_size: int) -> Tuple[str, int]:
         """
@@ -300,7 +306,7 @@ class OverlayWindowManager:
         wrapped_text = ""
         
         while size >= 12:
-            test_font = tkfont.Font(family=self.font_family, size=size)
+            self.measure_font.configure(size=size)
             
             # Simple greedy wrapping algorithm
             lines = []
@@ -314,7 +320,7 @@ class OverlayWindowManager:
                     continue
                     
                 test_line = current_line + char
-                line_w = test_font.measure(test_line)
+                line_w = self.measure_font.measure(test_line)
                 if line_w <= max_w - 40: # Subtract padding
                     current_line = test_line
                 else:
@@ -348,14 +354,15 @@ class OverlayWindowManager:
             self.hide()
             return
 
-        # 1. Determine width
-        max_width = self.get_max_width()
+        # 1. Determine width and base font size
+        max_width, base_font_size = self.get_max_width_and_font()
         
         # 2. Get wrapped text and fitted font size
-        display_text, font_size = self.calculate_fitting_text(text, max_width, self.base_font_size)
+        display_text, font_size = self.calculate_fitting_text(text, max_width, base_font_size)
         
         # 3. Configure font properties
-        use_font = tkfont.Font(family=self.font_family, size=font_size, weight="bold")
+        self.display_font.configure(family=self.font_family, size=font_size)
+        use_font = self.display_font
         
         # 4. Measure size needed for the label
         line_space = use_font.metrics("linespace")
