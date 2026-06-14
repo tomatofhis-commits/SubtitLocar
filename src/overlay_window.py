@@ -234,6 +234,7 @@ class OverlayWindowManager:
         self.text_color = settings.get("colorTrans", "#ffffff")
         self.outline_color = settings.get("outlineColor", "#000000")
         self.outline_width = int(settings.get("outlineWidth", 2))
+        self.base_font_size = int(settings.get("fontSizeTrans", 46))
         
         # Set drag mode
         drag_enabled = settings.get("overlayDragMode", False)
@@ -278,20 +279,16 @@ class OverlayWindowManager:
             self.text_win.deiconify()
             force_topmost(self.text_hwnd)
 
-    def get_max_width_and_font(self) -> Tuple[int, int]:
-        """Determine width of box and font size based on size mode."""
+    def get_max_width(self) -> int:
+        """Determine width of box based on size mode."""
         if self.size_mode == "small":
             width_pct = 0.35
-            base_font_size = 24
         elif self.size_mode == "large":
             width_pct = 0.70
-            base_font_size = 48
         else: # medium (default)
             width_pct = 0.50
-            base_font_size = 36
             
-        width = int(self.screen_w * width_pct)
-        return width, base_font_size
+        return int(self.screen_w * width_pct)
 
     def calculate_fitting_text(self, text: str, max_w: int, base_font_size: int) -> Tuple[str, int]:
         """
@@ -351,11 +348,11 @@ class OverlayWindowManager:
             self.hide()
             return
 
-        # 1. Determine width and base font size
-        max_width, base_font_size = self.get_max_width_and_font()
+        # 1. Determine width
+        max_width = self.get_max_width()
         
         # 2. Get wrapped text and fitted font size
-        display_text, font_size = self.calculate_fitting_text(text, max_width, base_font_size)
+        display_text, font_size = self.calculate_fitting_text(text, max_width, self.base_font_size)
         
         # 3. Configure font properties
         use_font = tkfont.Font(family=self.font_family, size=font_size, weight="bold")
