@@ -84,9 +84,6 @@ class OverlayWindowManager:
         
         self.font_family = font_family
         self.current_text = ""
-        # Create a single font object for text measurement to prevent Tkinter resource leaks
-        self.measure_font = tkfont.Font(family=self.font_family)
-        self.display_font = tkfont.Font(family=self.font_family, weight="bold")
         
         # Default settings (will be updated dynamically by settings_ui/main)
         self.enabled = False
@@ -124,6 +121,7 @@ class OverlayWindowManager:
         """Create Tkinter root and the dual windows."""
         self.root = tk.Tk()
         self.root.withdraw()  # Hide main root window
+        self.measure_font = tkfont.Font(family=self.font_family)
         
         # Retrieve primary screen dimensions
         self.screen_w = self.root.winfo_screenwidth()
@@ -306,7 +304,7 @@ class OverlayWindowManager:
         wrapped_text = ""
         
         while size >= 12:
-            self.measure_font.configure(size=size)
+            self.measure_font.configure(size=-size)
             
             # Simple greedy wrapping algorithm
             lines = []
@@ -360,12 +358,12 @@ class OverlayWindowManager:
         # 2. Get wrapped text and fitted font size
         display_text, font_size = self.calculate_fitting_text(text, max_width, base_font_size)
         
-        # 3. Configure font properties
-        self.display_font.configure(family=self.font_family, size=font_size)
-        use_font = self.display_font
+        # 3. Configure font properties (Use tuple with negative size for pixel height to prevent leaks)
+        self.measure_font.configure(family=self.font_family, size=-font_size, weight="bold")
+        use_font = (self.font_family, -font_size, "bold")
         
         # 4. Measure size needed for the label
-        line_space = use_font.metrics("linespace")
+        line_space = self.measure_font.metrics("linespace")
         line_count = len(display_text.split("\n"))
         
         actual_h = (line_space * line_count) + 20
