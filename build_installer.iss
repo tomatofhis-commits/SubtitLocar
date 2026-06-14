@@ -1,14 +1,14 @@
 [Setup]
 ; アプリケーションの基本情報
 AppName=SubtitLocar
-AppVersion=0.8
+AppVersion=0.9
 AppPublisher=SubtitLocar Project
 ; インストール先を C:\Users\[ユーザー名]\AppData\Local\SubtitLocar に指定
 DefaultDirName={localappdata}\SubtitLocar
 DefaultGroupName=SubtitLocar
 ; インストーラーの出力先ディレクトリとファイル名
 OutputDir=D:\Locally_Translated_Subtitle_Project\installer
-OutputBaseFilename=SubtitLocar_Setup_v0.8
+OutputBaseFilename=SubtitLocar_Setup_v0.9
 ; 圧縮アルゴリズムの設定
 Compression=lzma2/max
 SolidCompression=yes

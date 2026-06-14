@@ -214,7 +214,7 @@ class SettingsWindow:
         self._loading     = True
 
         self.root = tk.Tk()
-        self.root.title("SubtitLocar 設定パネル v0.8")
+        self.root.title("SubtitLocar 設定パネル v0.9")
         self.root.geometry("520x760")
         self.root.configure(bg=BG)
         self.root.resizable(True, True)
