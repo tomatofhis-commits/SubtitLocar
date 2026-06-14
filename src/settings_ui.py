@@ -134,13 +134,14 @@ DEFAULTS = {
     "overlayTransparency": 0,
     "overlayX":            960,  # 画面中央(1920の半分)
     "overlayY":            900,  # 画面下部付近
+    "overlayDragMode":     False,
 }
 
 LOCAL_KEYS = {
     "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
     "sttLanguage", "sttModel", "sttGpuDevice", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize",
-    "overlayEnabled", "overlaySize", "overlayBgStyle", "overlayTransparency", "overlayX", "overlayY"
+    "overlayEnabled", "overlaySize", "overlayBgStyle", "overlayTransparency", "overlayX", "overlayY", "overlayDragMode"
 }   # excluded from WS broadcast
 
 
@@ -256,17 +257,6 @@ class SettingsWindow:
             
             # Apply initial settings
             self.overlay_mgr.update_settings(self.settings)
-            
-            # Repositioning control based on settings window focus
-            def on_focus_in(event):
-                if event.widget == self.root:
-                    self.overlay_mgr.set_draggable_mode(True)
-            def on_focus_out(event):
-                if event.widget == self.root:
-                    self.overlay_mgr.set_draggable_mode(False)
-                    
-            self.root.bind("<FocusIn>", on_focus_in)
-            self.root.bind("<FocusOut>", on_focus_out)
         except Exception as e:
             logger.error(f"Failed to initialize overlay window: {e}")
 
@@ -374,6 +364,7 @@ class SettingsWindow:
 
         self._section("オーバーレイ表示設定（ゲーム画面等への表示）")
         self._checkbox("overlayEnabled", "ゲーム画面上に翻訳字幕をオーバーレイ表示")
+        self._checkbox("overlayDragMode", "字幕の位置を調整する (ドラッグ移動許可)")
         self._radio("overlayBgStyle", "オーバーレイの背景スタイル",
                     [("背景なし(文字のみ)", "text_only"), ("半透明背景あり", "with_bg")])
         self._radio("overlaySize", "オーバーレイの枠幅",

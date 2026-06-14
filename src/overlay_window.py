@@ -2,6 +2,7 @@
 overlay_window.py - Custom Overlay Window for displaying translated subtitles.
 Runs in a separate thread/loop and draws text on top of all windows (click-through).
 Uses a double-window design to allow independent opacity for background and text.
+Draws outlined text using tk.Canvas to match OBS subtitle styles.
 """
 
 import sys
@@ -23,6 +24,8 @@ SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
+SWP_NOZORDER = 0x0004
+SWP_FRAMECHANGED = 0x0020
 
 def init_dpi_awareness():
     """Ensure crisp text on high-DPI monitors."""
@@ -49,6 +52,11 @@ def apply_click_through(hwnd: int, enabled: bool = True):
         else:
             style &= ~WS_EX_TRANSPARENT
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+        # Force Windows to apply style changes immediately
+        ctypes.windll.user32.SetWindowPos(
+            hwnd, 0, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE
+        )
     except Exception as e:
         logger.error(f"Failed to apply click-through: {e}")
 
@@ -68,7 +76,7 @@ class OverlayWindowManager:
     Manages the overlay subtitle display on the desktop.
     Uses two stacked windows:
     1. BackgroundWindow (for translucent dark background)
-    2. TextWindow (for crisp, solid/semi-solid text)
+    2. TextWindow (for crisp, solid/semi-solid text with outline)
     """
     
     def __init__(self, font_family: str = "Noto Sans JP"):
@@ -83,6 +91,11 @@ class OverlayWindowManager:
         self.bg_style = "with_bg"      # text_only / with_bg
         self.transparency_level = 0    # 0 (0%), 30 (30%), 60 (60%)
         
+        # Text Styles (Synced with OBS settings)
+        self.text_color = "#ffffff"
+        self.outline_color = "#000000"
+        self.outline_width = 2
+        
         # Position cache: Base bottom-center position
         # X: center of screen, Y: 85% down the screen (default)
         self.screen_w = 1920
@@ -94,14 +107,13 @@ class OverlayWindowManager:
         self.root = None
         self.bg_win = None
         self.text_win = None
+        self.canvas = None
         
-        # Text label and configuration
-        self.label = None
-        
-        # Coordinates for dragging (when settings window is active)
+        # Coordinates for dragging
         self.drag_start_x = 0
         self.drag_start_y = 0
         self.is_dragging = False
+        self.draggable_mode = False
         
         self._setup_windows()
         
@@ -132,16 +144,14 @@ class OverlayWindowManager:
         self.text_win.wm_attributes("-transparentcolor", "#000100")
         self.text_win.wm_attributes("-topmost", True)
         
-        # Set up text rendering label
-        self.label = tk.Label(
+        # Set up Canvas for outlined text rendering
+        self.canvas = tk.Canvas(
             self.text_win,
-            text="",
-            fg="white",
             bg="#000100",
-            justify="center",
-            anchor="center"
+            highlightthickness=0,
+            bd=0
         )
-        self.label.pack(fill="both", expand=True)
+        self.canvas.pack(fill="both", expand=True)
         self.text_win.withdraw()
         
         # Apply Windows API tweaks (click-through and topmost force)
@@ -151,13 +161,13 @@ class OverlayWindowManager:
         apply_click_through(self.bg_hwnd, True)
         apply_click_through(self.text_hwnd, True)
         
-        # Bind drag events to the text label for position configuration
-        self.label.bind("<Button-1>", self._start_drag)
-        self.label.bind("<B1-Motion>", self._on_drag)
-        self.label.bind("<ButtonRelease-1>", self._stop_drag)
+        # Bind drag events to the canvas for position configuration
+        self.canvas.bind("<Button-1>", self._start_drag)
+        self.canvas.bind("<B1-Motion>", self._on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._stop_drag)
         
     def _start_drag(self, event):
-        if not self.is_draggable():
+        if not self.draggable_mode:
             return
         self.is_dragging = True
         self.drag_start_x = event.x_root
@@ -184,24 +194,20 @@ class OverlayWindowManager:
         # Save positions to settings.json
         self.save_position()
         
-    def is_draggable(self) -> bool:
-        """Window is draggable only when UI settings allow it (e.g. settings window open)."""
-        # Handled externally by settings_ui setting lock/unlock
-        return getattr(self, "draggable_mode", False)
-        
     def set_draggable_mode(self, enabled: bool):
         """Toggle whether overlay is interactive for position adjustment."""
         self.draggable_mode = enabled
         if enabled:
             # Disable click-through so user can drag it
             apply_click_through(self.text_hwnd, False)
-            # Give a visual indication (e.g. highlight color)
-            self.label.configure(bg="#112233")
-            self.text_win.wm_attributes("-transparentcolor", "") # Temporarily disable transparent key to see boundaries
-            self.update_text("【ドラッグして字幕位置を調整できます】\nDrag to reposition overlay")
+            # Temporarily disable transparent color key to visualize drag boundaries
+            self.text_win.wm_attributes("-transparentcolor", "")
+            self.canvas.configure(bg="#22263a") # Muted UI background color
+            self.update_text("【ドラッグして字幕位置を調整できます】\nDrag this box to reposition overlay")
         else:
             apply_click_through(self.text_hwnd, True)
-            self.label.configure(bg="#000100")
+            # Restore transparent color key
+            self.canvas.configure(bg="#000100")
             self.text_win.wm_attributes("-transparentcolor", "#000100")
             self.update_text(self.current_text)
 
@@ -213,7 +219,6 @@ class OverlayWindowManager:
 
     def save_position(self):
         """Triggered to notify settings structure that base coordinates changed."""
-        # This will be bound to callback to settings system
         if hasattr(self, "on_position_changed"):
             self.on_position_changed(self.base_x, self.base_y)
 
@@ -224,6 +229,15 @@ class OverlayWindowManager:
         self.bg_style = settings.get("overlayBgStyle", "with_bg")
         self.transparency_level = int(settings.get("overlayTransparency", 0))
         
+        # Sync Font & Text Styles with OBS options
+        self.font_family = settings.get("fontFamily", "Noto Sans JP")
+        self.text_color = settings.get("colorTrans", "#ffffff")
+        self.outline_color = settings.get("outlineColor", "#000000")
+        self.outline_width = int(settings.get("outlineWidth", 2))
+        
+        # Set drag mode
+        drag_enabled = settings.get("overlayDragMode", False)
+        
         # Load saved coordinates if present
         saved_x = settings.get("overlayX")
         saved_y = settings.get("overlayY")
@@ -231,11 +245,15 @@ class OverlayWindowManager:
             self.base_x = int(saved_x)
             self.base_y = int(saved_y)
             
-        # Refresh current view
-        if self.enabled:
-            self.update_text(self.current_text)
+        # Update draggable mode state
+        if drag_enabled != self.draggable_mode:
+            self.set_draggable_mode(drag_enabled)
         else:
-            self.hide()
+            # Refresh current view
+            if self.enabled:
+                self.update_text(self.current_text)
+            else:
+                self.hide()
 
     def hide(self):
         """Hide both windows."""
@@ -248,16 +266,20 @@ class OverlayWindowManager:
         """Show both windows."""
         if not self.enabled:
             return
-        if self.bg_win and self.bg_style == "with_bg":
+        # Background screen overlay
+        if self.bg_win and self.bg_style == "with_bg" and not self.draggable_mode:
             self.bg_win.deiconify()
             force_topmost(self.bg_hwnd)
+        else:
+            # Hide background during dragging to avoid visual clutter
+            self.bg_win.withdraw()
+            
         if self.text_win:
             self.text_win.deiconify()
             force_topmost(self.text_hwnd)
 
     def get_max_width_and_font(self) -> Tuple[int, int]:
         """Determine width of box and font size based on size mode."""
-        # 1. Box width (Percentage of monitor width)
         if self.size_mode == "small":
             width_pct = 0.35
             base_font_size = 24
@@ -289,14 +311,12 @@ class OverlayWindowManager:
             current_line = ""
             
             for char in words:
-                # Handle manual newlines if present
                 if char == "\n":
                     lines.append(current_line)
                     current_line = ""
                     continue
                     
                 test_line = current_line + char
-                # Measure width of current line
                 line_w = test_font.measure(test_line)
                 if line_w <= max_w - 40: # Subtract padding
                     current_line = test_line
@@ -314,14 +334,13 @@ class OverlayWindowManager:
             # If it exceeds 3 lines, reduce font size and retry
             size -= 2
             
-        # Fallback if text is extremely long and size hits floor
         if size < 12 and len(lines) > 3:
             wrapped_text = "\n".join(lines[:3]) # Truncate to 3 lines
             
         return wrapped_text, size
 
     def update_text(self, text: str):
-        """Update the displayed text and adjust geometry accordingly."""
+        """Update the displayed text on the canvas and adjust geometry accordingly."""
         self.current_text = text
         
         if not self.enabled:
@@ -338,12 +357,10 @@ class OverlayWindowManager:
         # 2. Get wrapped text and fitted font size
         display_text, font_size = self.calculate_fitting_text(text, max_width, base_font_size)
         
-        # 3. Configure text Label
+        # 3. Configure font properties
         use_font = tkfont.Font(family=self.font_family, size=font_size, weight="bold")
-        self.label.configure(text=display_text, font=use_font)
         
         # 4. Measure size needed for the label
-        # Add some padding
         line_space = use_font.metrics("linespace")
         line_count = len(display_text.split("\n"))
         
@@ -351,7 +368,6 @@ class OverlayWindowManager:
         actual_w = max_width
         
         # 5. Position calculations (Bottom-anchored, growing upwards)
-        # base_x is the horizontal center, base_y is the bottom edge
         left_x = self.base_x - (actual_w // 2)
         top_y = self.base_y - actual_h
         
@@ -365,8 +381,46 @@ class OverlayWindowManager:
         self.text_win.geometry(geom_str)
         self.bg_win.geometry(geom_str)
         
-        # 7. Apply alpha (transparency mapping)
-        # Default: text opacity 100%, bg opacity 50%
+        # 7. Redraw Canvas text with outline (OBS style)
+        self.canvas.delete("all")
+        center_x = actual_w // 2
+        center_y = actual_h // 2
+        
+        text_color_to_use = self.text_color
+        outline_color_to_use = self.outline_color
+        
+        # In drag adjustment mode, use prominent colors for visibility
+        if self.draggable_mode:
+            text_color_to_use = "#ffe066" # Bright yellow
+            outline_color_to_use = "#000000"
+        
+        # Draw outlines by offsetting in 8 directions (grid)
+        if self.outline_width > 0 and not self.draggable_mode:
+            w = self.outline_width
+            for dx in range(-w, w + 1):
+                for dy in range(-w, w + 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    self.canvas.create_text(
+                        center_x + dx, center_y + dy,
+                        text=display_text,
+                        font=use_font,
+                        fill=outline_color_to_use,
+                        anchor="center",
+                        justify="center"
+                    )
+                    
+        # Draw main foreground text
+        self.canvas.create_text(
+            center_x, center_y,
+            text=display_text,
+            font=use_font,
+            fill=text_color_to_use,
+            anchor="center",
+            justify="center"
+        )
+        
+        # 8. Apply alpha (transparency mapping)
         text_alpha = 1.0
         bg_alpha = 0.5
         
@@ -377,10 +431,14 @@ class OverlayWindowManager:
             text_alpha = 0.4
             bg_alpha = 0.10
             
+        # During drag, force solid window visibility
+        if self.draggable_mode:
+            text_alpha = 1.0
+            
         self.text_win.attributes("-alpha", text_alpha)
         self.bg_win.attributes("-alpha", bg_alpha)
         
-        # 8. Show Windows
+        # 9. Show Windows
         self.show()
 
     def run_step(self):
@@ -395,7 +453,6 @@ class OverlayWindowManager:
 # ── Simple testing environment ───────────────────────────────────────
 if __name__ == "__main__":
     import time
-    # Test stub
     logging.basicConfig(level=logging.DEBUG)
     overlay = OverlayWindowManager()
     overlay.enabled = True
