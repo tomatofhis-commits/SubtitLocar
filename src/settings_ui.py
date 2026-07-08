@@ -221,7 +221,7 @@ class SettingsWindow:
         self._loading     = True
 
         self.root = tk.Tk()
-        self.root.title("SubtitLocar 設定パネル v0.9")
+        self.root.title("SubtitLocar 設定パネル v0.10")
         self.root.geometry("520x760")
         self.root.configure(bg=BG)
         self.root.resizable(True, True)
@@ -457,16 +457,24 @@ class SettingsWindow:
         self._vars["llmProvider"] = prov_var
         row_prov = self._row("LLM プロバイダ")
         
+        # URL配置用のコンテナフレーム（Tkinter pack時の順序崩れ防止）
+        url_container = tk.Frame(self._frame, bg=BG)
+        url_container.pack(fill="x")
+        
         # 2. URL入力欄
         ollama_url_var = tk.StringVar()
         self._vars["ollamaUrl"] = ollama_url_var
-        row_ollama = self._row("Ollama 接続先")
+        row_ollama = tk.Frame(url_container, bg=BG)
+        tk.Label(row_ollama, text="Ollama 接続先", font=("Segoe UI", 10),
+                 bg=BG, fg=FG, anchor="w", width=22).pack(side="left")
         ollama_ent = tk.Entry(row_ollama, textvariable=ollama_url_var, bg=BG2, fg=FG, bd=1, insertbackground=FG, font=("Segoe UI", 10))
         ollama_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
         lmstudio_url_var = tk.StringVar()
         self._vars["lmstudioUrl"] = lmstudio_url_var
-        row_lmstudio = self._row("LM Studio 接続先")
+        row_lmstudio = tk.Frame(url_container, bg=BG)
+        tk.Label(row_lmstudio, text="LM Studio 接続先", font=("Segoe UI", 10),
+                 bg=BG, fg=FG, anchor="w", width=22).pack(side="left")
         lmstudio_ent = tk.Entry(row_lmstudio, textvariable=lmstudio_url_var, bg=BG2, fg=FG, bd=1, insertbackground=FG, font=("Segoe UI", 10))
         lmstudio_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
 

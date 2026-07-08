@@ -163,10 +163,9 @@ class Translator:
                 payload = {
                     "model": self.model,
                     "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
                         {
                             "role": "user",
-                            "content": f"Translate the following {self.source_lang} to {self.target_lang}:\n{text}",
+                            "content": f"{SYSTEM_PROMPT}\n\nTranslate the following {self.source_lang} to {self.target_lang}:\n{text}",
                         },
                     ],
                     "stream": True,
