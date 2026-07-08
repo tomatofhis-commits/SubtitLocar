@@ -160,12 +160,40 @@ class Translator:
         try:
             if self.llm_provider == "lmstudio":
                 url = f"{self.lmstudio_url.rstrip('/')}/chat/completions"
+                
+                is_translategemma = "translategemma" in self.model.lower()
+                if is_translategemma:
+                    lang_code_map = {
+                        "Japanese": "ja",
+                        "English": "en",
+                        "Chinese": "zh",
+                        "Korean": "ko",
+                        "Spanish": "es",
+                        "French": "fr",
+                        "German": "de",
+                        "Russian": "ru"
+                    }
+                    src_code = lang_code_map.get(self.source_lang, "ja")
+                    tgt_code = lang_code_map.get(self.target_lang, "en")
+                    
+                    content_payload = [
+                        {
+                            "type": "text",
+                            "source_lang_code": src_code,
+                            "target_lang_code": tgt_code,
+                            "text": text,
+                            "image": None
+                        }
+                    ]
+                else:
+                    content_payload = f"{SYSTEM_PROMPT}\n\nTranslate the following {self.source_lang} to {self.target_lang}:\n{text}"
+
                 payload = {
                     "model": self.model,
                     "messages": [
                         {
                             "role": "user",
-                            "content": f"{SYSTEM_PROMPT}\n\nTranslate the following {self.source_lang} to {self.target_lang}:\n{text}",
+                            "content": content_payload,
                         },
                     ],
                     "stream": True,
