@@ -24,7 +24,9 @@ stt:
   beam_size: 5
 
 translation:
+  provider: "ollama"
   ollama_url: "http://localhost:11434"
+  lmstudio_url: "http://localhost:1234/v1"
   model: "gemma3:4b"
   source_lang: "Japanese"
   target_lang: "English"

@@ -35,7 +35,9 @@ class Translator:
 
     def __init__(self, config: dict, text_queue: asyncio.Queue, translated_queue: asyncio.Queue, status_queue: stdlib_queue.Queue = None):
         trans_cfg = config.get("translation", {})
-        self.ollama_url: str          = trans_cfg.get("ollama_url", "http://localhost:11434")
+        self.llm_provider: str        = trans_cfg.get("provider", "ollama")
+        self.ollama_url: str          = trans_cfg.get("ollama_url", "http://localhost:11434").replace("localhost", "127.0.0.1")
+        self.lmstudio_url: str        = trans_cfg.get("lmstudio_url", "http://localhost:1234/v1").replace("localhost", "127.0.0.1")
         self.model: str               = trans_cfg.get("model", "gemma3:4b")
         self.source_lang: str         = trans_cfg.get("source_lang", "Japanese")
         self.target_lang: str         = trans_cfg.get("target_lang", "English")
@@ -47,24 +49,47 @@ class Translator:
         self.error_cooldown_until: float = 0.0
 
     async def check_connection(self) -> bool:
-        """Ollamaサーバーへの疎通確認"""
+        """ローカルLLM（Ollama / LM Studio）への疎通確認"""
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(f"{self.ollama_url}/api/tags")
-                if resp.status_code == 200:
-                    tags   = resp.json()
-                    models = [m["name"] for m in tags.get("models", [])]
-                    logger.info(f"Ollama接続OK. 利用可能なモデル: {models}")
-                    if self.model not in models:
-                        base_names = [m.split(":")[0] for m in models]
-                        if self.model.split(":")[0] not in base_names:
-                            logger.warning(
-                                f"モデル '{self.model}' がOllamaに見つかりません。"
-                                f"事前に 'ollama pull {self.model}' を実行してください。"
-                            )
-                    return True
+                if self.llm_provider == "lmstudio":
+                    url = self.lmstudio_url
+                    if not url.endswith("/models") and not url.endswith("/models/"):
+                        if url.endswith("/v1") or url.endswith("/v1/"):
+                            api_url = url.rstrip("/") + "/models"
+                        else:
+                            api_url = url.rstrip("/") + "/v1/models"
+                    else:
+                        api_url = url
+                    
+                    resp = await client.get(api_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        models = []
+                        if "data" in data:
+                            for item in data["data"]:
+                                if "id" in item:
+                                    models.append(item["id"])
+                        logger.info(f"LM Studio接続OK. 利用可能なモデル: {models}")
+                        if self.model not in models:
+                            logger.warning(f"モデル '{self.model}' がLM Studioのロードモデルリストに見つかりません。")
+                        return True
+                else: # ollama
+                    resp = await client.get(f"{self.ollama_url}/api/tags")
+                    if resp.status_code == 200:
+                        tags   = resp.json()
+                        models = [m["name"] for m in tags.get("models", [])]
+                        logger.info(f"Ollama接続OK. 利用可能なモデル: {models}")
+                        if self.model not in models:
+                            base_names = [m.split(":")[0] for m in models]
+                            if self.model.split(":")[0] not in base_names:
+                                logger.warning(
+                                    f"モデル '{self.model}' がOllamaに見つかりません。"
+                                    f"事前に 'ollama pull {self.model}' を実行してください。"
+                                )
+                        return True
         except Exception as e:
-            logger.error(f"Ollama接続エラー: {e}")
+            logger.error(f"ローカルLLM接続エラー ({self.llm_provider}): {e}")
         return False
 
     async def run(self) -> None:
@@ -128,42 +153,77 @@ class Translator:
             })
 
     async def _translate(self, client: httpx.AsyncClient, text: str) -> str:
-        """Ollama /api/chat を呼び出して翻訳する（ストリーミング）"""
+        """ローカルLLMを呼び出して翻訳する（ストリーミング）"""
         if self.status_queue is not None:
             self.status_queue.put({"type": "translation", "status": "active"})
             
         try:
-            url = f"{self.ollama_url}/api/chat"
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": f"Translate the following {self.source_lang} to {self.target_lang}:\n{text}",
-                    },
-                ],
-                "stream": True,
-                "options": {"temperature": 0.3, "top_p": 0.9},
-            }
-    
-            result_parts = []
-            async with client.stream("POST", url, json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data    = json.loads(line)
-                        content = data.get("message", {}).get("content", "")
-                        if content:
-                            result_parts.append(content)
-                        if data.get("done", False):
-                            break
-                    except json.JSONDecodeError:
-                        continue
-    
-            return "".join(result_parts).strip()
+            if self.llm_provider == "lmstudio":
+                url = f"{self.lmstudio_url.rstrip('/')}/chat/completions"
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": f"Translate the following {self.source_lang} to {self.target_lang}:\n{text}",
+                        },
+                    ],
+                    "stream": True,
+                    "temperature": 0.3,
+                    "top_p": 0.9,
+                }
+                
+                result_parts = []
+                async with client.stream("POST", url, json=payload) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data = json.loads(data_str)
+                                content = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if content:
+                                    result_parts.append(content)
+                            except json.JSONDecodeError:
+                                continue
+                return "".join(result_parts).strip()
+            else: # ollama
+                url = f"{self.ollama_url}/api/chat"
+                payload = {
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": f"Translate the following {self.source_lang} to {self.target_lang}:\n{text}",
+                        },
+                    ],
+                    "stream": True,
+                    "options": {"temperature": 0.3, "top_p": 0.9},
+                }
+        
+                result_parts = []
+                async with client.stream("POST", url, json=payload) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data    = json.loads(line)
+                            content = data.get("message", {}).get("content", "")
+                            if content:
+                                result_parts.append(content)
+                            if data.get("done", False):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+        
+                return "".join(result_parts).strip()
         finally:
             if self.status_queue is not None:
                 self.status_queue.put({"type": "translation", "status": "inactive"})

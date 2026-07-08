@@ -144,7 +144,7 @@ def print_banner(config: dict) -> None:
 
     panel = Panel(
         table,
-        title="[bold yellow] SubtitLocar v0.9 [/bold yellow]",
+        title="[bold yellow] SubtitLocar v0.10 [/bold yellow]",
         subtitle="[dim]Ctrl+C to quit[/dim]",
         border_style="bright_blue",
         padding=(1, 2),
@@ -265,6 +265,12 @@ async def main() -> None:
                     else:
                         console.print(f"[cyan]マイクデバイス: {audio_cfg['microphone_name']}[/cyan]")
 
+            if safe_load("llmProvider", trans_cfg, "provider"):
+                console.print(f"[cyan]LLMプロバイダ: {trans_cfg['provider']}[/cyan]")
+            if safe_load("ollamaUrl", trans_cfg, "ollama_url"):
+                pass
+            if safe_load("lmstudioUrl", trans_cfg, "lmstudio_url"):
+                pass
             if safe_load("aiModel", trans_cfg, "model"):
                 console.print(f"[cyan]AIモデル: {trans_cfg['model']}[/cyan]")
 

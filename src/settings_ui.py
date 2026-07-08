@@ -118,6 +118,11 @@ DEFAULTS = {
     "audioCaptureMode":  "microphone",  # microphone / loopback
     "audioMicDevice":    "(デフォルト)",
     "audioLoopbackDevice": "(デフォルト)",
+    "llmProvider":       _trans_cfg.get("provider", "ollama"),
+    "ollamaUrl":         _trans_cfg.get("ollama_url", "http://localhost:11434"),
+    "lmstudioUrl":       _trans_cfg.get("lmstudio_url", "http://localhost:1234/v1"),
+    "cachedOllamaModels": ["gemma3:4b", "gemma2:9b", "llama3:8b", "phi3:mini"],
+    "cachedLMStudioModels": ["meta-llama-3-8b-instruct", "gemma-2-9b-it", "gemma-3-4b-it"],
     "aiModel":           _trans_cfg.get("model", "gemma3:4b"),
     "sttLanguage":       _LANG_MAP_REV.get(_stt_cfg.get("language"), "自動判定 (Auto)"),
     "sttModel":          "large-v3-turbo (標準・高速高精度)",
@@ -138,7 +143,8 @@ DEFAULTS = {
 }
 
 LOCAL_KEYS = {
-    "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", "aiModel", 
+    "audioCaptureMode", "audioMicDevice", "audioLoopbackDevice", 
+    "llmProvider", "ollamaUrl", "lmstudioUrl", "aiModel",
     "sttLanguage", "sttModel", "sttGpuDevice", "transSourceLang", "transTargetLang",
     "micSensitivity", "vadThreshold", "beamSize",
     "overlayEnabled", "overlaySize", "overlayBgStyle", "overlayTransparency", "overlayX", "overlayY", "overlayDragMode"
@@ -401,7 +407,7 @@ class SettingsWindow:
         self._create_scale("vadThreshold", "無音判定レベル (ノイズ除去):", 0.01, 0.99, 0.01)
         self._scale("beamSize", "文字起こしの精度 (Beam Size):", 1, 10, 1, 
                     fmt=lambda v: f"{int(v)}")
-        self._ai_model_combobox()
+        self._llm_settings_area()
         self._language_combobox("sttLanguage", "音声認識の言語", allow_auto=True)
         self._stt_model_combobox()
         self._gpu_device_combobox()
@@ -441,6 +447,156 @@ class SettingsWindow:
         row = self._row(label)
         tk.Checkbutton(row, variable=var, bg=BG, fg=FG, selectcolor=ACCENT,
                        activebackground=BG, command=self._on_change).pack(side="left")
+
+    def _llm_settings_area(self):
+        """ローカルLLM設定（Ollama / LM Studio 選択式）"""
+        import urllib.request
+        
+        # 1. プロバイダ選択
+        prov_var = tk.StringVar()
+        self._vars["llmProvider"] = prov_var
+        row_prov = self._row("LLM プロバイダ")
+        
+        # 2. URL入力欄
+        ollama_url_var = tk.StringVar()
+        self._vars["ollamaUrl"] = ollama_url_var
+        row_ollama = self._row("Ollama 接続先")
+        ollama_ent = tk.Entry(row_ollama, textvariable=ollama_url_var, bg=BG2, fg=FG, bd=1, insertbackground=FG, font=("Segoe UI", 10))
+        ollama_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        lmstudio_url_var = tk.StringVar()
+        self._vars["lmstudioUrl"] = lmstudio_url_var
+        row_lmstudio = self._row("LM Studio 接続先")
+        lmstudio_ent = tk.Entry(row_lmstudio, textvariable=lmstudio_url_var, bg=BG2, fg=FG, bd=1, insertbackground=FG, font=("Segoe UI", 10))
+        lmstudio_ent.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+        # 3. AIモデルコンボボックス
+        model_var = tk.StringVar()
+        self._vars["aiModel"] = model_var
+        row_model = self._row("翻訳AIモデル")
+        model_cb = ttk.Combobox(row_model, textvariable=model_var, state="normal", width=33)
+        model_cb.pack(side="left")
+        
+        # 4. 「モデル一覧を取得」ボタン
+        btn_fetch = tk.Button(row_model, text="モデル取得", bg=ACCENT, fg="white", 
+                              font=("Segoe UI", 9, "bold"), bd=0, padx=8, pady=2, cursor="hand2",
+                              activebackground=ACCENT, activeforeground="white")
+        btn_fetch.pack(side="left", padx=(8, 0))
+
+        # 接続テスト & モデル取得用ヘルパー関数
+        def get_ollama_models(url: str) -> list[str]:
+            url_resolved = url.replace("localhost", "127.0.0.1")
+            try:
+                req = urllib.request.Request(f"{url_resolved.rstrip('/')}/api/tags", method="GET")
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return [m["name"] for m in data.get("models", [])]
+            except Exception as e:
+                logger.warning(f"Ollamaモデル取得失敗: {e}")
+            return []
+
+        def get_lmstudio_models(url: str) -> list[str]:
+            url_resolved = url.replace("localhost", "127.0.0.1")
+            try:
+                if not url_resolved.endswith("/models") and not url_resolved.endswith("/models/"):
+                    if url_resolved.endswith("/v1") or url_resolved.endswith("/v1/"):
+                        api_url = url_resolved.rstrip("/") + "/models"
+                    else:
+                        api_url = url_resolved.rstrip("/") + "/v1/models"
+                else:
+                    api_url = url_resolved
+                req = urllib.request.Request(api_url, method="GET")
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    models = []
+                    if "data" in data:
+                        for item in data["data"]:
+                            if "id" in item:
+                                models.append(item["id"])
+                    return models
+            except Exception as e:
+                logger.warning(f"LM Studioモデル取得失敗: {e}")
+            return []
+
+        def fetch_models_async():
+            btn_fetch.config(text="取得中...", state="disabled")
+            prov = prov_var.get()
+            url = lmstudio_url_var.get() if prov == "lmstudio" else ollama_url_var.get()
+
+            def _task():
+                if prov == "lmstudio":
+                    fetched = get_lmstudio_models(url)
+                else:
+                    fetched = get_ollama_models(url)
+                
+                def _update_ui():
+                    btn_fetch.config(text="モデル取得", state="normal")
+                    if fetched:
+                        # キャッシュの更新
+                        if prov == "lmstudio":
+                            self.settings["cachedLMStudioModels"] = fetched
+                        else:
+                            self.settings["cachedOllamaModels"] = fetched
+                        save_settings(self.settings)
+                        
+                        # コンボボックスの更新
+                        model_cb.config(values=fetched)
+                        if model_var.get() not in fetched:
+                            model_var.set(fetched[0])
+                        self._on_change()
+                    else:
+                        logger.warning("モデル一覧が空、または取得できませんでした。")
+                self.root.after(0, _update_ui)
+            threading.Thread(target=_task, daemon=True).start()
+
+        btn_fetch.config(command=fetch_models_async)
+
+        # プロバイダ変更によるUI表示の切り替え
+        def update_provider_ui(*_):
+            prov = prov_var.get()
+            if prov == "lmstudio":
+                row_ollama.pack_forget()
+                row_lmstudio.pack(fill="x", pady=4)
+                cached = self.settings.get("cachedLMStudioModels", ["meta-llama-3-8b-instruct", "gemma-2-9b-it", "gemma-3-4b-it"])
+            else:
+                row_lmstudio.pack_forget()
+                row_ollama.pack(fill="x", pady=4)
+                cached = self.settings.get("cachedOllamaModels", ["gemma3:4b", "gemma2:9b", "llama3:8b", "phi3:mini"])
+            
+            # モデルのコンボボックス値キャッシュの切り替え
+            model_cb.config(values=cached)
+            # 現在の値がキャッシュに入っていなければ1個目にする
+            curr = model_var.get()
+            if curr not in cached and cached:
+                model_var.set(cached[0])
+            self._on_change()
+
+        # プロバイダ用のラジオボタンを配置
+        for text, value in [("Ollama", "ollama"), ("LM Studio", "lmstudio")]:
+            tk.Radiobutton(row_prov, text=text, variable=prov_var, value=value,
+                           bg=BG, fg=FG, selectcolor=ACCENT,
+                           activebackground=BG, command=update_provider_ui
+                           ).pack(side="left", padx=5)
+
+        # 初期値のロード
+        prov_var.set(self.settings.get("llmProvider", "ollama"))
+        ollama_url_var.set(self.settings.get("ollamaUrl", "http://localhost:11434"))
+        lmstudio_url_var.set(self.settings.get("lmstudioUrl", "http://localhost:1234/v1"))
+        model_var.set(self.settings.get("aiModel", ""))
+
+        # 初期値設定後にUI表示を反映
+        update_provider_ui()
+
+        # UI要素のwriteトレースをバインド (初期値設定が終わった後にバインドすることで無限ループや不要な_on_changeを回避)
+        prov_var.trace_add("write", lambda *_: self._on_change())
+        ollama_url_var.trace_add("write", lambda *_: self._on_change())
+        lmstudio_url_var.trace_add("write", lambda *_: self._on_change())
+        model_var.trace_add("write", lambda *_: self._on_change())
+        
+        # モデル選択イベントのバインド
+        model_cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
+        model_cb.bind("<Return>",             lambda _: self._on_change())
+        model_cb.bind("<FocusOut>",           lambda _: self._on_change())
 
     def _radio(self, key, label, options):
         var = tk.StringVar()
@@ -548,29 +704,7 @@ class SettingsWindow:
         """DEPRECATED - merged into _audio_device_area"""
         pass
 
-    def _ai_model_combobox(self):
-        """Ollama AI model picker."""
-        models = ["gemma3:4b", "gemma2:9b", "llama3:8b", "phi3:mini"]
-        try:
-            import urllib.request
-            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=0.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                fetched_models = [m["name"] for m in data.get("models", [])]
-                if fetched_models:
-                    models = fetched_models
-        except Exception:
-            pass
 
-        var = tk.StringVar()
-        self._vars["aiModel"] = var
-        row = self._row("翻訳AIモデル")
-        cb = ttk.Combobox(row, textvariable=var, values=models,
-                          state="normal", width=33)
-        cb.pack(side="left")
-        cb.bind("<<ComboboxSelected>>", lambda _: self._on_change())
-        cb.bind("<Return>",             lambda _: self._on_change())
-        cb.bind("<FocusOut>",           lambda _: self._on_change())
 
     def _language_combobox(self, key: str, label: str, allow_auto: bool = False):
         """Language picker for STT and Translation."""
