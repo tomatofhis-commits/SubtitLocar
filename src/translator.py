@@ -254,3 +254,45 @@ class Translator:
         finally:
             if self.status_queue is not None:
                 self.status_queue.put({"type": "translation", "status": "inactive"})
+
+    def update_settings(self, sj: dict) -> None:
+        """設定画面から動的に呼び出され、翻訳設定を更新する"""
+        logger.info("[Translator] 翻訳設定を動的に更新中...")
+        
+        self.llm_provider = sj.get("llmProvider", "ollama")
+        
+        ollama_url = sj.get("ollamaUrl", "http://localhost:11434")
+        self.ollama_url = ollama_url.replace("localhost", "127.0.0.1")
+        
+        lmstudio_url = sj.get("lmstudioUrl", "http://localhost:1234/v1")
+        self.lmstudio_url = lmstudio_url.replace("localhost", "127.0.0.1")
+        
+        self.model = sj.get("aiModel", "gemma3:4b")
+        
+        # 言語マッピングの正規化
+        lang_map = {
+            "Japanese": "Japanese",
+            "English": "English",
+            "Chinese": "Chinese",
+            "Korean": "Korean",
+            "Spanish": "Spanish",
+            "French": "French",
+            "German": "German",
+            "Russian": "Russian",
+            "日本語": "Japanese",
+            "英語": "English",
+            "中国語": "Chinese",
+            "韓国語": "Korean"
+        }
+        
+        src_lang = sj.get("transSourceLang", "Japanese")
+        self.source_lang = lang_map.get(src_lang, src_lang)
+        
+        tgt_lang = sj.get("transTargetLang", "English")
+        self.target_lang = lang_map.get(tgt_lang, tgt_lang)
+        
+        logger.info(
+            f"[Translator] 更新完了: provider={self.llm_provider}, "
+            f"model={self.model}, ollama_url={self.ollama_url}, lmstudio_url={self.lmstudio_url}, "
+            f"source_lang={self.source_lang}, target_lang={self.target_lang}"
+        )

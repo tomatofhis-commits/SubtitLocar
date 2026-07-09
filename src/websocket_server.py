@@ -39,13 +39,15 @@ def _load_current_settings() -> dict:
 class WebSocketBroadcaster:
     def __init__(self, config: dict, translated_queue: asyncio.Queue,
                  settings_queue: asyncio.Queue | None = None,
-                 text_queue: asyncio.Queue | None = None):
+                 text_queue: asyncio.Queue | None = None,
+                 translator = None):
         ws_cfg = config.get("websocket", {})
         self.host = ws_cfg.get("host", "localhost")
         self.port = ws_cfg.get("port", 8765)
         self.translated_queue = translated_queue
         self.settings_queue   = settings_queue  # from tkinter UI
         self.text_queue       = text_queue      # to Translator
+        self.translator       = translator
         self._clients: set[WebSocketServerProtocol] = set()
 
     async def run(self) -> None:
@@ -115,6 +117,12 @@ class WebSocketBroadcaster:
         """Broadcast settings updates from tkinter UI."""
         while True:
             msg: dict = await self.settings_queue.get()
-            if self._clients:
-                await self._broadcast(json.dumps(msg, ensure_ascii=False))
+            t = msg.get("type")
+            if t == "local_settings_update":
+                settings_dict = msg.get("settings", {})
+                if self.translator is not None:
+                    self.translator.update_settings(settings_dict)
+            else:
+                if self._clients:
+                    await self._broadcast(json.dumps(msg, ensure_ascii=False))
             self.settings_queue.task_done()

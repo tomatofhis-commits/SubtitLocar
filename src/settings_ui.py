@@ -806,7 +806,8 @@ class SettingsWindow:
         if hasattr(self, "overlay_mgr") and self.overlay_mgr is not None:
             self.overlay_mgr.update_settings(self.settings)
         self._push({"type": "settings_update", "settings": self._ws_payload(self.settings)})
-        self._flash_status("設定を送信")
+        self._push({"type": "local_settings_update", "settings": self.settings})
+        self._flash_status("設定を保存")
 
     def _push(self, msg: dict):
         asyncio.run_coroutine_threadsafe(self.queue.put(msg), self.loop)

@@ -177,16 +177,27 @@ async def startup_sequence(
     console.print(f"[green][OK] WebSocket server started: ws://{host}:{port}[/green]")
     console.print("[dim]  -> OBS browser source status indicator will show 'LIVE'[/dim]")
 
-    # --- Step 2: Ollama疎通確認 -----------------------------------
+    # --- Step 2: 翻訳LLMサーバー疎通確認 --------------------------
     translator = Translator(config, text_queue, translated_queue, status_queue)
-    console.print("\n[cyan]Ollamaサーバーへの接続を確認中...[/cyan]")
+    # WebSocketBroadcaster に translator インスタンスを登録して動的設定同期を可能にする
+    ws_broadcaster.translator = translator
+
+    provider_name = "LM Studio" if translator.llm_provider == "lmstudio" else "Ollama"
+    console.print(f"\n[cyan]{provider_name}サーバーへの接続を確認中...[/cyan]")
     ok = await translator.check_connection()
     if not ok:
-        console.print(
-        "[bold red]Cannot connect to Ollama.\n"
-        "  1. Make sure 'ollama serve' is running\n"
-        "  2. Check ollama_url in config.yaml[/bold red]"
-        )
+        if translator.llm_provider == "lmstudio":
+            console.print(
+                "[bold red]Cannot connect to LM Studio.\n"
+                "  1. Make sure LM Studio API Server is running\n"
+                "  2. Check lmstudio_url in config.yaml or settings[/bold red]"
+            )
+        else:
+            console.print(
+                "[bold red]Cannot connect to Ollama.\n"
+                "  1. Make sure 'ollama serve' is running\n"
+                "  2. Check ollama_url in config.yaml or settings[/bold red]"
+            )
         ws_task.cancel()
         sys.exit(1)
 
